@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Generated outputs (PDFs, processed JSON)
+outputs/*
+!outputs/.gitkeep
+!outputs/README.md
+data/processed/*
+!data/processed/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vscode/settings.json
+.idea/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Python venv (existing)
+.venv/
+
+# Graphify (existing tooling)
+graphify-out/
