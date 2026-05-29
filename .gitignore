@@ -16,7 +16,7 @@ build/
 outputs/*
 !outputs/.gitkeep
 !outputs/README.md
-data/processed/*
+data/*
 !data/processed/.gitkeep
 
 # Logs
