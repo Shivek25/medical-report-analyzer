@@ -109,3 +109,71 @@ export interface ApiError {
   code: string;
   details?: unknown;
 }
+
+// ─── Phase 2 Types ────────────────────────────────────────────────────────────
+
+/** Options controlling how `parseRawText` builds a StructuredReport. */
+export interface ParseOptions {
+  /** When true, the returned StructuredReport will include the cleaned `rawText`. */
+  keepRawText?: boolean;
+}
+
+/** Patient and lab metadata extracted from the report header. */
+export interface ReportMetadata {
+  patientName?: string;
+  patientAge?: number;
+  patientGender?: 'M' | 'F' | 'O';
+  reportDate?: string;     // ISO YYYY-MM-DD when convertible; verbatim string otherwise
+  sampleDate?: string;     // same conversion rule as reportDate
+  labName?: string;
+  reportId?: string;
+}
+
+/** Structured representation of a lab entry's reference range. */
+export interface LabReferenceRange {
+  low?: number;
+  high?: number;
+  text?: string;
+}
+
+/** A single parsed lab test row produced by the Phase 2 parser. */
+export interface LabEntry {
+  testName: string;
+  value: string;                       // string form preserves qualitative values
+  unit?: string;
+  referenceRange?: LabReferenceRange;
+  flag?: string;
+  notes?: string;
+  category: string;                    // 'Uncategorized' when no header seen
+  uncertain: boolean;
+  uncertaintyReason?: string;
+}
+
+/** Quality metadata describing how reliably the report was parsed. */
+export interface ExtractionQuality {
+  totalRowsDetected: number;
+  successfullyParsed: number;
+  uncertainRows: number;
+  skippedRows: number;
+  ambiguousLines: string[];
+  warnings: string[];
+  confidence: number;                  // [0, 1]
+  lowConfidence: boolean;
+  validationFailed?: boolean;
+}
+
+/** Top-level Phase 2 output: typed, validated structured report. */
+export interface StructuredReport {
+  metadata: ReportMetadata;
+  entries: LabEntry[];
+  rawText?: string;                    // present iff ParseOptions.keepRawText === true
+  extractionQuality: ExtractionQuality;
+}
+
+/** Internal type emitted by Row_Detector (exported for testing only). */
+export interface DetectedRow {
+  classification: 'lab' | 'ambiguous';
+  rawText: string;
+  lineIndex: number;
+  category?: string;
+}
