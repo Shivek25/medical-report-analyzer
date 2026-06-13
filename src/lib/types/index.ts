@@ -177,3 +177,71 @@ export interface DetectedRow {
   lineIndex: number;
   category?: string;
 }
+
+// ─── Phase 3 Types ────────────────────────────────────────────────────────────
+
+/** Severity/status classification for a summarized finding. */
+export type FindingSeverity =
+  | 'high'
+  | 'low'
+  | 'critical-high'
+  | 'critical-low'
+  | 'borderline-high'
+  | 'borderline-low';
+
+/** A single finding in the report summary. */
+export interface SummaryFinding {
+  testName: string;
+  value: string;
+  unit?: string;
+  referenceRange?: LabReferenceRange;
+  severity: FindingSeverity;
+  category: string;
+  interpretation: string;
+  uncertain: boolean;
+  uncertaintyReason?: string;
+}
+
+/** A group of findings sharing the same category (e.g. "Lipid Profile"). */
+export interface SummaryCategoryGroup {
+  category: string;
+  findings: SummaryFinding[];
+}
+
+/** A single normal lab entry (no severity needed). */
+export interface NormalEntry {
+  testName: string;
+  value: string;
+  unit?: string;
+  referenceRange?: LabReferenceRange;
+  category: string;
+  interpretation: string;
+}
+
+/** A group of normal entries sharing the same category. */
+export interface NormalCategoryGroup {
+  category: string;
+  entries: NormalEntry[];
+}
+
+/** Metadata about the summary generation itself. */
+export interface SummaryGenerationMeta {
+  generatedAt: string;
+  sourceConfidence: number;
+  totalEntries: number;
+  abnormalCount: number;
+  normalCount: number;
+  uncertainCount: number;
+  skippedCount: number;
+}
+
+/** Top-level Phase 3 output: a deterministic, structured report summary. */
+export interface ReportSummary {
+  metadata: ReportMetadata;
+  generationMeta: SummaryGenerationMeta;
+  overviewText: string;
+  abnormalFindings: SummaryCategoryGroup[];
+  normalFindings: NormalCategoryGroup[];
+  uncertainEntries: SummaryFinding[];
+  disclaimer: string;
+}

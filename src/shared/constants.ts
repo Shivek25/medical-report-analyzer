@@ -24,3 +24,9 @@ export const MARKER_STATUSES = [
   'critical-low',
   'unknown',
 ] as const;
+
+/** Standard disclaimer appended to every generated summary (Phase 3). */
+export const SUMMARY_DISCLAIMER =
+  'This summary is auto-generated for informational purposes only. ' +
+  'It does not constitute a medical diagnosis or treatment recommendation. ' +
+  'Please consult a qualified healthcare professional for interpretation of these results.';
