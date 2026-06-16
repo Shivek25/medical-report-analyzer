@@ -6,6 +6,7 @@
 import express, { Express } from 'express';
 import cors from 'cors';
 import { uploadRoute } from './routes/upload.route.js';
+import { analyzeRoute } from './routes/analyze.route.js';
 import { exportRoute } from './routes/export.route.js';
 import { viewRoute } from './routes/view.route.js';
 import { logger } from '../shared/logger.js';
@@ -19,6 +20,7 @@ export function createServer(): Express {
 
   // Mount API Routes
   app.use('/api/v1', uploadRoute);
+  app.post('/api/v1/analyze', analyzeRoute.handler);
   app.post('/api/v1/export', exportRoute.handler);
 
   // Mount UI Routes
