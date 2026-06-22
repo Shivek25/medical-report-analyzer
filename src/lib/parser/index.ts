@@ -42,6 +42,7 @@ export { build } from './quality.js';
 // `extract`; namespaced re-exports avoid the name collision.
 export * as fieldExtractor from './field-extractor.js';
 export * as metadata from './metadata.js';
+export { isNoiseRow } from './noise-filter.js';
 
 // ─── Phase 0 legacy exports (backwards compatibility) ─────────────────────────
 

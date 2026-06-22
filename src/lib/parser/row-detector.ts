@@ -32,6 +32,7 @@
  */
 
 import type { DetectedRow } from '../types/index.js';
+import { isNoiseRow } from './noise-filter.js';
 import {
   FLAG_TOKEN,
   NUMERIC_VALUE,
@@ -374,7 +375,7 @@ export function detect(cleanedText: string): DetectResult {
       i += 1;
       continue;
     }
-    if (isMethodOrNoteLine(line) || isDisclaimerLine(line) || isInterpretationTableLine(line)) {
+    if (isMethodOrNoteLine(line) || isDisclaimerLine(line) || isInterpretationTableLine(line) || isNoiseRow(line)) {
       i += 1;
       continue;
     }
@@ -426,9 +427,14 @@ export function detect(cleanedText: string): DetectResult {
       if (folded.exceededCap) {
         warnings.push(`Multi-line merge exceeded 3 lines at row ${i + 1}`);
       }
+      const rawText = folded.fragments.join(' ');
+      if (isNoiseRow(rawText)) {
+        i = folded.consumedUpTo;
+        continue;
+      }
       rows.push({
         classification: 'lab',
-        rawText: folded.fragments.join(' '),
+        rawText,
         lineIndex: i,
       });
       i = folded.consumedUpTo;
@@ -446,9 +452,8 @@ export function detect(cleanedText: string): DetectResult {
       }
       if (merge.merged) {
         const mergedText = merge.fragments.join(' ');
-        // Skip if the merged result is an interpretation table line
-        // (e.g., `TOTAL CHOLESTEROL >190` merged from test-name + comparison).
-        if (isInterpretationTableLine(mergedText)) {
+        // Skip if the merged result is an interpretation table line or noise row
+        if (isInterpretationTableLine(mergedText) || isNoiseRow(mergedText)) {
           i = merge.consumedUpTo;
           continue;
         }
@@ -469,6 +474,10 @@ export function detect(cleanedText: string): DetectResult {
     // ── Case C: line carries some data but is not a complete lab row ─────────
     // Per Req 4.5, emit `ambiguous` so the orchestrator can record it on
     // `extractionQuality.ambiguousLines`.
+    if (isNoiseRow(line)) {
+      i += 1;
+      continue;
+    }
     rows.push({ classification: 'ambiguous', rawText: line, lineIndex: i });
     i += 1;
   }
@@ -507,7 +516,7 @@ function foldRangeContinuations(
   while (j < lines.length) {
     const next = lines[j]!;
     if (isMergeBoundary(next)) break;
-    if (isMethodOrNoteLine(next) || isDisclaimerLine(next) || isInterpretationTableLine(next)) break;
+    if (isMethodOrNoteLine(next) || isDisclaimerLine(next) || isInterpretationTableLine(next) || isNoiseRow(next)) break;
     if (!isRangeContinuationLine(next)) break;
 
     if (fragments.length >= MERGE_CAP) {
@@ -552,7 +561,7 @@ function mergeFromTestName(lines: string[], startIndex: number): MergeResult {
 
     // Boundary lines stop the merge entirely (Req 7.3).
     if (isMergeBoundary(next)) break;
-    if (isMethodOrNoteLine(next) || isDisclaimerLine(next) || isInterpretationTableLine(next)) break;
+    if (isMethodOrNoteLine(next) || isDisclaimerLine(next) || isInterpretationTableLine(next) || isNoiseRow(next)) break;
 
     // A self-contained lab row at this position means our starting line was
     // actually a header / prose; the merge fails. Per Req 7.5, the new line
