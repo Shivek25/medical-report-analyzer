@@ -57,8 +57,10 @@ import { validateStructuredReport } from '../validator/index.js';
 import { assignCategories } from './categorizer.js';
 import { extract as extractFields } from './field-extractor.js';
 import { extract as extractMetadata } from './metadata.js';
+import { isGenericDescriptorToken } from './noise-filter.js';
 import { normalize } from './normalizer.js';
 import { build as buildQuality, type QualityCounts } from './quality.js';
+import { UNIT_TOKEN_ANCHORED } from './patterns.js';
 import { detect as detectRows } from './row-detector.js';
 import { clean as cleanText } from './text-cleaner.js';
 
@@ -121,6 +123,19 @@ export function parseRawText(
         // push the resulting entry into the report.
         const extracted = extractFields(row);
         const normalized = normalize(extracted);
+        // Conservative gate: only drop a row when Field_Extractor could not
+        // recover ANY meaningful analyte name (the name reduces to empty, a
+        // bare generic descriptor, or a standalone unit after cleaning). Such
+        // rows are provably non-medical and would otherwise surface as junk
+        // findings. Real analytes — even uncertain ones whose value landed on
+        // a separate line — are kept (emitted as uncertain), matching the base
+        // pipeline's emission behaviour. It is better to miss a junk row than
+        // to invent a test, but never at the cost of dropping a real analyte.
+        if (!hasMeaningfulTestName(normalized)) {
+          ambiguousLines.push(row.rawText);
+          skippedRows += 1;
+          continue;
+        }
         entries.push(normalized);
         if (normalized.uncertain) {
           uncertainRows += 1;
@@ -201,6 +216,43 @@ export function parseRawText(
 }
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * True iff the entry carries a meaningful analyte name — i.e. the testName is
+ * non-empty AND, after descriptor/column-label stripping, yields at least one
+ * non-descriptor, non-unit token. Used by the per-row loop to decide whether a
+ * row should be emitted or treated as ambiguous and skipped.
+ *
+ * Deliberately narrow: only rows whose name is *provably* non-medical (empty,
+ * a bare generic descriptor, or a standalone unit) are rejected. Real analytes
+ * — even uncertain ones whose value landed on a separate line — are kept,
+ * matching the base pipeline's emission behaviour.
+ *
+ * Pure: same input ⇒ same output.
+ */
+function hasMeaningfulTestName(entry: LabEntry): boolean {
+  // Field_Extractor signals a non-meaningful name explicitly via its
+  // uncertainty reason (set for rows that are entirely descriptor/label
+  // fragments with no parseable value). Trust that verdict.
+  if (entry.uncertaintyReason?.startsWith('Ambiguous test name')) return false;
+  const name = entry.testName.trim();
+  if (name.length === 0) return false;
+  // A bare generic descriptor or standalone unit token is never an analyte.
+  if (isGenericDescriptorToken(name)) return false;
+  if (UNIT_TOKEN_ANCHORED.test(name)) return false;
+  // An analyte name must contain at least one alphabetic word of 3+ letters.
+  // Rows whose "name" is just numbers, units, ranges, or single symbols (e.g.
+  // "16.5 ng/mL", "31.5-34.5", "523") are orphan value/range fragments whose
+  // real test name landed on a separate line — they carry no analyte identity
+  // and must not be emitted as findings.
+  if (!/[A-Za-z]{3,}/.test(name)) return false;
+  // Otherwise the row carries something name-shaped; keep it. The
+  // Field_Extractor has already cleaned embedded descriptors/labels out of
+  // real analyte names via `extractMeaningfulTestName`, so we do not re-run
+  // that here — re-running it would risk dropping rows whose value-branch
+  // fallback name legitimately still contains a unit/range fragment.
+  return true;
+}
 
 /**
  * Construct the empty `StructuredReport` shape used by both the failure

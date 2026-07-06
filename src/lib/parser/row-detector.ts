@@ -32,7 +32,7 @@
  */
 
 import type { DetectedRow } from '../types/index.js';
-import { isNoiseRow } from './noise-filter.js';
+import { isNoiseRow, isGenericDescriptorOrLabelLine } from './noise-filter.js';
 import {
   FLAG_TOKEN,
   NUMERIC_VALUE,
@@ -127,6 +127,74 @@ const NON_DATA_PREFIXES = [
   'near optimal',
   'optimal <',
   'value units',
+  // ── Generic assay methodology descriptors ────────────────────────────────────
+  // These appear as standalone lines between real lab rows in Thyrocare PDFs;
+  // they represent how a test was measured, NOT a test name itself.
+  'calculated',        // e.g. "Calculated" after MCH/MCHC/RDW rows
+  'flow cytometry',   // e.g. "Flow Cytometry" after DLC %-rows
+  'sls-hemoglobin method',
+  'cph detection',
+  'hf & ei',
+  'hf & fc',
+  'hf &',              // catch any other HF & variants
+  // ── Column-header artefacts (appear in multi-column table dumps) ─────────────
+  // These are column labels printed by Thyrocare summary/detail views that get
+  // extracted as standalone lines and then erroneously merged into test rows.
+  'technology',        // "TECHNOLOGY" column header
+  'methodology',       // "METHODOLOGY" column header
+  // Note: 'value units' already listed above; "VALUE" and "UNITS" alone are
+  // caught by the exact-blank-test-name guard in the field-extractor.
+  // ── Section-level category labels that appear without associated values ───────
+  // These appear in the summary table header to label a category of tests
+  // but carry no value themselves.
+  'lipid',             // "LIPID" section label in summary table
+  'renal',             // "RENAL" section label in summary table
+  'vitamins',          // "VITAMINS" section label (only when stand-alone)
+  // ── Bibliography / reference guideline lines ─────────────────────────────────
+  'tietz',
+  'books-verlag',
+  'ann intern med',
+  'clin chem',
+  'j clin invest',
+  '(reference :',
+  'reference :',       // method cross-reference lines
+  // ── Thyrocare boilerplate section headers ──────────────────────────────────
+  // These look like section headers (all-caps) but must not become test rows.
+  'conditions of reporting',
+  'explanations',
+  'suggestions',
+  'customer details',
+  'sample type | barcode',
+  'sample_type /tests:',
+  'barcodes/sample_type',
+  'tests done :',
+  'tests done:',
+  'as declared in our data',
+  'as per survey',
+  'call us on',
+  'or call us',
+  // ── Sex-specific reference range lines ──────────────────────────────────────
+  // These appear below APOLIPOPROTEIN and similar tests as gender-stratified
+  // reference ranges: "Male:   86 - 152" / "Female:   94 - 162". They are
+  // reference data rows, NOT lab result rows, and must never become entries.
+  'male:',
+  'female:',
+  'male :',
+  'female :',
+  'adult :',
+  'adult male :',
+  'adult female :',
+  'adults :',
+  'children :',
+  'child :',
+  // ── PDF column header labels ─────────────────────────────────────────────────
+  // These appear as standalone column-header rows in the Thyrocare detail view.
+  // They have no data content and must stop the merge when encountered as the
+  // first token of a line.
+  'units ',           // catches "UNITS 25-OH VITAMIN D (TOTAL)" style leaks
+  'value ',           // catches "VALUE some text" column header leaks
+  'technology ',
+  'methodology ',
 ] as const;
 
 /**
@@ -226,7 +294,18 @@ function isMethodOrNoteLine(line: string): boolean {
 /** True iff the line is a disclaimer (Req 4.3.d). */
 function isDisclaimerLine(line: string): boolean {
   const lower = line.toLowerCase();
-  return DISCLAIMER_FRAGMENTS.some((fragment) => lower.includes(fragment));
+  if (DISCLAIMER_FRAGMENTS.some((fragment) => lower.includes(fragment))) return true;
+
+  const trimmed = line.trim();
+  // Thyrocare "CONDITIONS OF REPORTING" bullet items start with "v  " (v + 2+ spaces)
+  if (/^v\s{2,}/.test(trimmed)) return true;
+
+  // Long prose sentences (>= 80 chars) that contain no numeric value token are
+  // almost certainly clinical-significance paragraphs or conditions-of-reporting.
+  // Genuine lab rows are always short (<60 chars in the cleaned format).
+  if (trimmed.length >= 80 && !/\d/.test(trimmed.slice(0, 30))) return true;
+
+  return false;
 }
 
 /**
@@ -307,6 +386,29 @@ function isMergeBoundary(line: string): boolean {
     isPageMarkerLine(line) ||
     looksLikeHeaderShape(line)
   );
+}
+
+/**
+ * Shared "merge breaker" predicate: a line that must stop an in-progress merge
+ * rather than being absorbed as a name fragment or value continuation.
+ *
+ * This consolidates the previously-duplicated checks scattered through
+ * `foldRangeContinuations` and `mergeFromTestName`, and additionally treats
+ * generic assay descriptors / column labels / section headers as breakers so
+ * that noisy fragments do not get folded into a test name (which is what
+ * produced the bulk of the "Multi-line merge exceeded 3 lines" warnings).
+ *
+ * Breaking early here is the intended fix for the warning count: it makes
+ * continuation *stricter* (per the design rule) rather than hiding warnings.
+ */
+function isMergeBreaker(line: string): boolean {
+  if (isMethodOrNoteLine(line)) return true;
+  if (isDisclaimerLine(line)) return true;
+  if (isInterpretationTableLine(line)) return true;
+  if (isNoiseRow(line)) return true;
+  // Standalone descriptor / column-label / section-header lines break merges.
+  if (isGenericDescriptorOrLabelLine(line)) return true;
+  return false;
 }
 
 /**
@@ -516,7 +618,7 @@ function foldRangeContinuations(
   while (j < lines.length) {
     const next = lines[j]!;
     if (isMergeBoundary(next)) break;
-    if (isMethodOrNoteLine(next) || isDisclaimerLine(next) || isInterpretationTableLine(next) || isNoiseRow(next)) break;
+    if (isMergeBreaker(next)) break;
     if (!isRangeContinuationLine(next)) break;
 
     if (fragments.length >= MERGE_CAP) {
@@ -561,7 +663,7 @@ function mergeFromTestName(lines: string[], startIndex: number): MergeResult {
 
     // Boundary lines stop the merge entirely (Req 7.3).
     if (isMergeBoundary(next)) break;
-    if (isMethodOrNoteLine(next) || isDisclaimerLine(next) || isInterpretationTableLine(next) || isNoiseRow(next)) break;
+    if (isMergeBreaker(next)) break;
 
     // A self-contained lab row at this position means our starting line was
     // actually a header / prose; the merge fails. Per Req 7.5, the new line

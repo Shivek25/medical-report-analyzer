@@ -74,17 +74,18 @@ describe('Metadata Extractor — property tests', () => {
 
   // ───────────────────────────────────────────────────────────────────────────
   // Feature: pdf-text-structuring, Property 5: Date extraction is
-  // ISO-when-convertible, verbatim-otherwise
+  // ISO-when-convertible, omitted-otherwise
   // Validates: Requirements 2.2, 2.3
   //
   // For any date string `d` placed after a `Report Date` or
   // `Sample Collected` label, the corresponding `metadata` field SHALL equal
   // the ISO `YYYY-MM-DD` form of `d` when `d` matches one of the accepted
   // patterns (`DD/MM/YYYY`, `DD-MM-YYYY`, `DD MMM YYYY`, `MMM DD, YYYY`),
-  // and SHALL equal the verbatim (trimmed) source string otherwise.
+  // and SHALL be OMITTED (undefined) otherwise — non-parseable values are
+  // never stored verbatim so metadata is not polluted by stray fragments.
   // ───────────────────────────────────────────────────────────────────────────
   it(
-    'extracts dates as ISO YYYY-MM-DD when convertible and as the verbatim source string otherwise',
+    'extracts dates as ISO YYYY-MM-DD when convertible and omits the field otherwise',
     () => {
       // ── Helpers ────────────────────────────────────────────────────────────
       const monthAbbrs = [
@@ -120,19 +121,19 @@ describe('Metadata Extractor — property tests', () => {
       // it must produce. Together they cover all four accepted patterns.
       const ddSlash = validDateParts.map(([y, m, d]) => ({
         input: `${padded(d)}/${padded(m)}/${y}`,
-        expected: isoFor(y, m, d),
+        expected: isoFor(y, m, d) as string | undefined,
       }));
       const ddDash = validDateParts.map(([y, m, d]) => ({
         input: `${padded(d)}-${padded(m)}-${y}`,
-        expected: isoFor(y, m, d),
+        expected: isoFor(y, m, d) as string | undefined,
       }));
       const ddMmmYyyy = validDateParts.map(([y, m, d]) => ({
         input: `${d} ${monthAbbrs[m - 1]} ${y}`,
-        expected: isoFor(y, m, d),
+        expected: isoFor(y, m, d) as string | undefined,
       }));
       const mmmDdYyyy = validDateParts.map(([y, m, d]) => ({
         input: `${monthAbbrs[m - 1]} ${d}, ${y}`,
-        expected: isoFor(y, m, d),
+        expected: isoFor(y, m, d) as string | undefined,
       }));
 
       const convertibleArb = fc.oneof(ddSlash, ddDash, ddMmmYyyy, mmmDdYyyy);
@@ -143,15 +144,16 @@ describe('Metadata Extractor — property tests', () => {
       //   - the label keywords (`Report`, `Reported`, `Sample`, `Collected`,
       //     `Collection`, `Date`)
       // so the generated strings are guaranteed to fall through to the
-      // verbatim branch and cannot accidentally cross-match the other
-      // labelled line in the synthetic header.
+      // omitted branch and cannot accidentally cross-match the other
+      // labelled line in the synthetic header. The expected value is
+      // `undefined`: a non-ISO date must not be stored (Req 2.6).
       const safeChar = fc.constantFrom(...Array.from('qwxyzQWXYZ '));
       const nonConvertibleArb = fc
         .string({ unit: safeChar, minLength: 1, maxLength: 30 })
         .filter((s) => s.trim().length > 0)
-        .map((s) => ({ input: s, expected: s.trim() }));
+        .map((s) => ({ input: s, expected: undefined as string | undefined }));
 
-      // A single date case may be either convertible or verbatim.
+      // A single date case may be either convertible or omitted.
       const dateCase = fc.oneof(convertibleArb, nonConvertibleArb);
 
       fc.assert(
