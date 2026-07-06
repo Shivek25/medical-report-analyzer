@@ -36,6 +36,7 @@
  */
 
 import type { ReportMetadata } from '../types/index.js';
+import { isNoiseRow } from './noise-filter.js';
 import {
   ACCEPTED_DATE_FORMATS,
   AGE_GENDER_ANNOTATION,
@@ -57,12 +58,15 @@ const NAME_LABEL_LINE = /^\s*(?:Patient\s+)?Name\s*:\s*(.+?)\s*$/i;
 
 /**
  * Stand-alone title-case name line used as a fallback when no labelled line
- * is present. Requires at least two title-case words (avoiding all-caps
- * section headers such as `PATIENT INFORMATION`) with an optional trailing
- * `(...)` annotation.
+ * is present. Requires at least two *title-case* words — each word starts
+ * uppercase and contains at least one lowercase letter (`Shivek`, `Sharma`,
+ * `De Silva`) — with an optional trailing `(...)` annotation. All-caps words
+ * (`BY`, `REF`, `URINE`, `ROUTINE`) are rejected so column headers
+ * (`REF. BY`) and report titles (`URINE EXAMINATION ROUTINE`) are not
+ * mistaken for a patient name.
  */
 const STANDALONE_NAME_LINE =
-  /^([A-Z][a-zA-Z.'-]*(?:\s+[A-Z][a-zA-Z.'-]*)+(?:\s*\([^)]*\))?)$/;
+  /^([A-Z][a-z][a-zA-Z.'-]*(?:\s+[A-Z][a-z][a-zA-Z.'-]*)+(?:\s*\([^)]*\))?)$/;
 
 /** Labelled report-date line (`Report Date` or `Reported on`). */
 const REPORT_DATE_LABEL =
@@ -109,24 +113,37 @@ export function extract(cleanedText: string): ReportMetadata {
   }
 
   // ── Report / sample dates ───────────────────────────────────────────────────
+  // Only store a date when it parses to a clean ISO `YYYY-MM-DD`. A labelled
+  // value that does not match an accepted calendar-date format (stray numeric
+  // fragments, boilerplate, multi-value gluing) is left omitted rather than
+  // stored verbatim —Req 2.6: the parser never fabricates metadata, and a
+  // non-ISO reportDate would pollute downstream consumers.
   const reportDateRaw = findLabelledValue(lines, REPORT_DATE_LABEL);
   if (reportDateRaw !== undefined) {
-    metadata.reportDate = convertToIso(reportDateRaw);
+    const iso = convertToIso(reportDateRaw);
+    if (iso !== undefined) metadata.reportDate = iso;
   }
 
   const sampleDateRaw = findLabelledValue(lines, SAMPLE_DATE_LABEL);
   if (sampleDateRaw !== undefined) {
-    metadata.sampleDate = convertToIso(sampleDateRaw);
+    const iso = convertToIso(sampleDateRaw);
+    if (iso !== undefined) metadata.sampleDate = iso;
   }
 
   // ── Lab name ────────────────────────────────────────────────────────────────
+  // The first header-zone line containing a known lab keyword (Thyrocare,
+  // Diagnostics, Laboratory, Pathology, Lab, Healthcare) is treated as the lab
+  // name — but only if it is not itself a noise line (report status, address,
+  // contact, metadata, boilerplate). This guards against lines like
+  // "0 Cancelled in Lab" or "Sample processed in the laboratory" being mistaken
+  // for the lab name just because they contain the substring "lab".
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
-    if (LAB_KEYWORD_LINE.test(trimmed)) {
-      metadata.labName = trimmed;
-      break;
-    }
+    if (!LAB_KEYWORD_LINE.test(trimmed)) continue;
+    if (isNoiseRow(trimmed)) continue;
+    metadata.labName = trimmed;
+    break;
   }
 
   // ── Report ID (Barcode preferred, then Report ID) ───────────────────────────
@@ -158,6 +175,8 @@ interface NameInfo {
  * Returns `undefined` when neither pattern matches.
  */
 function extractName(lines: string[]): NameInfo | undefined {
+  // Strategy 1: a labelled `Name :` / `Patient Name :` line is the reliable
+  // signal. Prefer it everywhere in the header zone.
   for (const line of lines) {
     const m = NAME_LABEL_LINE.exec(line);
     if (m && m[1] !== undefined) {
@@ -165,11 +184,19 @@ function extractName(lines: string[]): NameInfo | undefined {
     }
   }
 
+  // Strategy 2 (conservative fallback): a stand-alone title-case line that
+  // ALSO carries the `(NNY/M)` age-gender annotation. The annotation is a
+  // near-perfect signal that the line is a patient name (e.g.
+  // "Shivek Sharma (22Y/M)"). Plain title-case phrases like "Report
+  // Availability Summary" or "Gross Examination" never carry it, so they are
+  // not mistaken for a name. Per Req 2.6 the parser never fabricates metadata,
+  // so when neither strategy matches the patient name is left omitted.
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
-    // Skip lab-name lines so they don't get mistaken for the patient name.
     if (LAB_KEYWORD_LINE.test(trimmed)) continue;
+    if (isNoiseRow(trimmed)) continue;
+    if (!AGE_GENDER_ANNOTATION.test(trimmed)) continue;
     const m = STANDALONE_NAME_LINE.exec(trimmed);
     if (m && m[1] !== undefined) {
       return parseNameAndAnnotation(m[1]);
@@ -239,18 +266,20 @@ function findFirstCapture(lines: string[], pattern: RegExp): string | undefined 
 
 /**
  * Convert a raw date string to ISO `YYYY-MM-DD` if it matches one of the
- * accepted formats; otherwise return the trimmed source string verbatim.
+ * accepted formats; otherwise return `undefined`.
  *
  * Conversion only succeeds when the parsed year/month/day form a real
- * calendar date (e.g., `31/02/2026` round-trips as verbatim, not ISO).
+ * calendar date (e.g., `31/02/2026` fails, not silently rolled over). A
+ * non-parseable value returns `undefined` so the caller can omit the field
+ * rather than store verbatim noise.
  */
-function convertToIso(rawDate: string): string {
+function convertToIso(rawDate: string): string | undefined {
   const trimmed = rawDate.trim();
   for (const spec of ACCEPTED_DATE_FORMATS) {
     const iso = tryFormat(trimmed, spec);
     if (iso !== undefined) return iso;
   }
-  return trimmed;
+  return undefined;
 }
 
 function tryFormat(value: string, spec: DateFormatSpec): string | undefined {

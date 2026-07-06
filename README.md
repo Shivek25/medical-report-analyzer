@@ -12,7 +12,7 @@
 
 1. **Upload** a blood test report PDF
 2. **Extract** biomarker values, reference ranges, and patient metadata
-3. **Summarize** findings using an LLM (key findings, recommendations)
+3. **Summarize** findings using a deterministic, rules-based engine — abnormal findings, normal entries, and uncertain rows grouped by category (no LLM required)
 4. **Export** the summary as a clean, downloadable PDF
 
 ---
@@ -83,10 +83,12 @@ outputs/               # Generated PDFs (git-ignored)
 | Phase | Status | Description |
 |---|---|---|
 | **0** | ✅ Complete | Project scaffold, types, shared utilities |
-| **1** | 🔜 Next | PDF extraction, parsing, validation, upload API |
-| **2** | ⬜ Planned | LLM summarization |
-| **3** | ⬜ Planned | PDF export |
+| **1** | ✅ Complete | PDF text extraction, structured parsing, Zod validation, upload API |
+| **2** | ✅ Complete | Structured report parsing & validation (`parseRawText` pipeline → `StructuredReport`) |
+| **3** | ✅ Complete | Deterministic summary generation (`buildReportSummary`) + PDF export |
 | **4** | ⬜ Planned | Auth, cloud storage, deployment |
+
+> **Note:** Phase 3 was originally specced as LLM-based summarization (see `docs/PHASES.md`). The implemented approach is **deterministic and LLM-free** — the legacy `generateSummary` stub is deprecated.
 
 ---
 
@@ -99,9 +101,9 @@ outputs/               # Generated PDFs (git-ignored)
 | Testing | Vitest |
 | Linting | ESLint + TypeScript ESLint |
 | Formatting | Prettier |
-| PDF Reading | pdf-parse / pdfjs-dist (Phase 1) |
-| LLM | OpenAI / Gemini SDK (Phase 2) |
-| PDF Export | Puppeteer / pdf-lib (Phase 3) |
+| PDF Reading | pdf-parse |
+| Summary Engine | Deterministic, rules-based (`buildReportSummary`) |
+| PDF Export | pdfmake |
 
 ---
 

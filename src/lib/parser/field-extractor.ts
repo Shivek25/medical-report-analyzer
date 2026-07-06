@@ -30,6 +30,10 @@
 
 import type { DetectedRow, LabEntry, LabReferenceRange } from '../types/index.js';
 import {
+  extractMeaningfulTestName,
+  isGenericDescriptorToken,
+} from './noise-filter.js';
+import {
   FLAG_TOKEN_ANCHORED,
   NUMERIC_VALUE_ANCHORED,
   QUALITATIVE_VALUE_ANCHORED,
@@ -38,6 +42,29 @@ import {
   REFERENCE_RANGE_QUALITATIVE,
   UNIT_TOKEN_ANCHORED,
 } from './patterns.js';
+
+// ─── Generic test-name guard ───────────────────────────────────────────────────
+
+/**
+ * Exact (case-insensitive) test names that are generic descriptors, not real
+ * biomarker names. An entry whose testName resolves to one of these after
+ * descriptor/column-label stripping (see {@link extractMeaningfulTestName}) is
+ * marked `uncertain = true` so downstream summary-builder can skip it.
+ *
+ * Single-char / single-symbol orphans (`%`, `>`, …) also end up here because
+ * they appear as orphan column-extraction artefacts. The full set of technology
+ * and methodology descriptors is owned by the noise-filter module and reached
+ * through {@link isGenericDescriptorToken}; this local set only carries the
+ * symbol/fragment orphans that have no place in the descriptor vocabulary.
+ */
+const GENERIC_TEST_NAMES = new Set([
+  'calculated pq', 'cph detection',
+  'hf & ei', 'hf & fc',
+  'ratio', '%', '>', '<', 'male:', 'female:', 'male :', 'female :',
+  'adults :', 'adult :', 'pq',
+  // Empty string / whitespace
+  '',
+]);
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -73,14 +100,23 @@ export function extract(row: DetectedRow): LabEntry {
     // No value token found anywhere — required field "value" is missing.
     // We still surface whatever leading text we have as the testName so
     // downstream consumers can see the row's context (Req 5.7 — "continue
-    // processing the remaining fields").
+    // processing the remaining fields"). The testName is still run through the
+    // descriptor/column-label sanitiser so a row that is *entirely* a
+    // descriptor/label fragment (e.g. "CALCULATED", "Flow Cytometry") is flagged
+    // ambiguous and skipped by the orchestrator rather than emitted as a finding.
+    const rawName = tokens.join(' ');
+    const meaningfulName = extractMeaningfulTestName(rawName);
+    const hasMeaningfulName = meaningfulName.length > 0 && !isGenericDescriptorToken(meaningfulName);
     const entry: LabEntry = {
-      testName: tokens.join(' '),
+      testName: rawName,
       value: '',
       category,
       uncertain: true,
       uncertaintyReason: `Missing value; raw: '${rawText}'`,
     };
+    if (!hasMeaningfulName) {
+      entry.uncertaintyReason = `Ambiguous test name; raw: '${rawText}'`;
+    }
     return entry;
   }
 
@@ -99,6 +135,30 @@ export function extract(row: DetectedRow): LabEntry {
     testName = tokens.slice(0, valueIdx).join(' ');
   }
 
+  // ── Post-extraction test-name sanitisation ───────────────────────────────────
+  // Strip leading column-label prefixes and leading/trailing generic assay
+  // descriptors from the extracted testName via the shared noise-filter helper.
+  //   "UNITS 25-OH VITAMIN D (TOTAL)"   → "25-OH VITAMIN D (TOTAL)"
+  //   "TC/ HDL CHOLESTEROL RATIO CALCULATED" → "TC/ HDL CHOLESTEROL RATIO"
+  //   "CALCULATED" (orphan)            → ""   → marked uncertain below.
+  const meaningfulName = extractMeaningfulTestName(testName);
+  if (meaningfulName !== testName) {
+    testName = meaningfulName;
+    if (testName === '') {
+      // The entire testName was a descriptor/column-label — mark uncertain.
+      missingFields.push('testName');
+      testName = trimmed; // keep raw as fallback for validator min(1)
+    }
+  }
+
+  // Guard: reject entries whose final testName is a known generic/orphan label,
+  // a generic assay descriptor token, or a standalone unit token.
+  const lowerName = testName.trim().toLowerCase();
+  const isGeneric =
+    GENERIC_TEST_NAMES.has(lowerName) ||
+    isGenericDescriptorToken(testName) ||
+    UNIT_TOKEN_ANCHORED.test(testName.trim());
+
   const value = tokens[valueIdx] ?? '';
   const remaining = tokens.slice(valueIdx + 1);
 
@@ -111,7 +171,7 @@ export function extract(row: DetectedRow): LabEntry {
     testName,
     value,
     category,
-    uncertain: false,
+    uncertain: isGeneric ? true : false,
   };
 
   if (optional.unit !== undefined) entry.unit = optional.unit;
@@ -121,6 +181,10 @@ export function extract(row: DetectedRow): LabEntry {
 
   // ── Uncertainty + parse-failure aggregation ─────────────────────────────────
   const reasonParts: string[] = [];
+
+  if (isGeneric) {
+    reasonParts.push(`Generic test name "${testName}"; raw: '${rawText}'`);
+  }
 
   if (missingFields.length > 0) {
     entry.uncertain = true;
