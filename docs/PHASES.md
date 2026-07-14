@@ -28,6 +28,19 @@
 - Wire export route
 - Build `DownloadButton` component
 
+## Phase 6 — LLM-Assisted Structured Extraction
+- Provider-agnostic `LlmClient` interface + deterministic stub (no network)
+- Bounded classification of candidate blocks into metadata / section_header /
+  lab_result / noise / uncertain (strict JSON, evidence + confidence + reason)
+- Deterministic validation gate: evidence-traceability, anti-fabrication, and
+  layout-independent plausibility checks (clinical-signal requirement, repeated-
+  token / prose / status-word guards)
+- Deterministic parser retained as fallback AND the final validation gate
+- Feature-flagged via `LLM_EXTRACTION_ENABLED`; falls back automatically when
+  the LLM path is disabled, fails, or yields too little
+- Regression tests on seen (Thyrocare) + unseen (Smart Health Report) PDFs
+- Prompt spec: `prompts/phase-06-llm-extraction.md`
+
 ## Phase 4 — Polish & Production
 - Authentication / rate limiting
 - Cloud storage for uploads and outputs
