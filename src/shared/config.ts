@@ -33,6 +33,22 @@ export const config = {
   })(),
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
+
+  // ─── Phase 6 — LLM-assisted extraction ────────────────────────────────────
+  /**
+   * Enable the LLM-assisted extraction stage. Defaults to `false`: until a real
+   * provider adapter is wired in, the route uses the deterministic parser. When
+   * `true`, the stub classifier runs first and the deterministic parser is the
+   * fallback whenever the LLM path fails or yields too little.
+   */
+  LLM_EXTRACTION_ENABLED: optionalEnv('LLM_EXTRACTION_ENABLED', 'false') === 'true',
+  /**
+   * Minimum model confidence (0..1) for admitting a `lab_result` as a finding.
+   * Items below the threshold are demoted to `uncertain`.
+   */
+  LLM_CONFIDENCE_THRESHOLD: Number.parseFloat(
+    optionalEnv('LLM_CONFIDENCE_THRESHOLD', '0.5'),
+  ),
 } as const;
 
 export type AppConfig = typeof config;
