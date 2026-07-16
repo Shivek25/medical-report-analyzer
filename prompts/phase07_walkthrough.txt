@@ -1,0 +1,53 @@
+Phase 7 Complete — 260/260 tests passing ✅
+Files created
+File	Purpose
+
+
+ollama-client.ts
+Ollama LlmClient adapter with health check, strict response chain, upstream evidence guard
+
+
+client-factory.ts
+Simple if/else factory — Ollama when enabled, disabled stub otherwise
+
+
+ollama-client.test.ts
+15 unit tests covering all error codes, evidence guard, fallback wiring, boilerplate blocking
+
+
+config.test.ts
+Config default tests for all 5 LLM/Ollama fields
+Files modified
+File	Change
+
+
+app.config.ts
+Added OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_MS to schema
+
+
+config.ts
+Wired 3 new env vars with safe defaults
+
+
+.env.example
+Documented all Ollama vars
+
+
+index.ts
+Exports createOllamaClient, createExtractionClient
+
+
+analyze.route.ts
+One-line swap to createExtractionClient(config)
+
+
+llm-extraction.regression.test.ts
+Added full Ollama regression block against all 3 PDF fixtures
+To use locally
+sh
+# 1. Pull the model
+ollama pull qwen3:8b
+# 2. Set LLM_EXTRACTION_ENABLED=true in your .env (all other vars use defaults)
+echo "LLM_EXTRACTION_ENABLED=true" >> .env
+# 3. Start the server
+npm run dev

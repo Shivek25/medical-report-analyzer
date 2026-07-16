@@ -94,7 +94,20 @@ export async function extractWithLlm(
   }
 
   try {
-    const cleanedText = cleanText(input.extractedText);
+    let sourceText = input.extractedText;
+    if (input.isFullySpatial && input.layoutPages && input.layoutPages.length > 0) {
+      try {
+        // Use the Phase 8 layout engine to reconstruct the text without boilerplate
+        const { analyzeLayout } = await import('../layout/index.js');
+        const doc = analyzeLayout(input.layoutPages, input.isFullySpatial ?? true);
+        const { candidatesToText } = await import('../layout/candidate-builder.js');
+        sourceText = candidatesToText(doc.candidates);
+      } catch (err: any) {
+        logger.warn('extractWithLlm: layout engine failed, falling back to raw text', { error: err.message });
+      }
+    }
+
+    const cleanedText = cleanText(sourceText);
     const blocks = generateCandidates(cleanedText);
 
     if (blocks.length === 0) {
@@ -108,6 +121,7 @@ export async function extractWithLlm(
         lowYield: false,
       };
     }
+
 
     // ── Batched classification ──────────────────────────────────────────────
     const items: LabeledItem[] = [];

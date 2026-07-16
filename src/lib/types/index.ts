@@ -93,7 +93,19 @@ export interface IngestionResult {
   extractedText: string;
   extractionNotes?: string;
   warningsOrErrors?: string[];
+  /**
+   * Phase 8: Per-page spatial data captured by the layout engine's pagerender
+   * hook. Present only when spatial capture succeeded for at least one page.
+   * Consumers should check `isFullySpatial` before relying on this for all pages.
+   */
+  layoutPages?: import('../layout/types.js').PageSpatialData[];
+  /**
+   * Phase 8: True when spatial data was captured for every page in the document.
+   * False when one or more pages failed spatial capture (partial geometry).
+   */
+  isFullySpatial?: boolean;
 }
+
 
 /** Response shape for /api/analyze */
 export interface AnalyzeResponse {
