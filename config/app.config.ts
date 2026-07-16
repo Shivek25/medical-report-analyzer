@@ -19,6 +19,14 @@ export interface AppConfigSchema {
   /** OpenAI API key — required in production */
   OPENAI_API_KEY: string;
   LOG_LEVEL: string;
+
+  // ─── Phase 7 — Ollama adapter ────────────────────────────────────────────
+  /** Base URL of the local Ollama server. Default: http://localhost:11434 */
+  OLLAMA_BASE_URL: string;
+  /** Model tag to use for extraction. Default: qwen3:8b */
+  OLLAMA_MODEL: string;
+  /** HTTP request timeout in milliseconds for Ollama generate calls. Default: 60000 */
+  OLLAMA_TIMEOUT_MS: number;
 }
 
 /** Required keys that must be set for the app to start */

@@ -1,11 +1,13 @@
 /**
  * src/lib/extraction/index.ts
  *
- * Phase 6 — LLM-assisted structured extraction barrel.
+ * Phase 6/7 — LLM-assisted structured extraction barrel.
  *
  * Public surface:
- *   - `extractWithLlm` — the extraction stage entry point.
- *   - `createStubClient` — deterministic, network-free `LlmClient`.
+ *   - `extractWithLlm`          — the extraction stage entry point.
+ *   - `createStubClient`        — deterministic, network-free `LlmClient`.
+ *   - `createOllamaClient`      — Ollama-backed `LlmClient` (qwen3:8b).
+ *   - `createExtractionClient`  — factory: selects Ollama vs stub from config.
  *   - `LlmClient` interface + supporting types — for plugging in a real
  *     provider adapter later.
  *   - `generateCandidates`, `validateLabResult` — re-exported for unit tests.
@@ -16,6 +18,8 @@
 
 export { extractWithLlm } from './extractor.js';
 export { createStubClient, type LlmClient, type StubClientOptions } from './llm-client.js';
+export { createOllamaClient, type OllamaClientOptions } from './ollama-client.js';
+export { createExtractionClient } from './client-factory.js';
 export { generateCandidates } from './candidate-generator.js';
 export { validateLabResult, type ValidatedLabResult } from './validator.js';
 export type {
@@ -30,3 +34,4 @@ export type {
   MetadataField,
   NormalizedLabResult,
 } from './types.js';
+

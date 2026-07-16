@@ -49,6 +49,25 @@ export const config = {
   LLM_CONFIDENCE_THRESHOLD: Number.parseFloat(
     optionalEnv('LLM_CONFIDENCE_THRESHOLD', '0.5'),
   ),
+
+  // ─── Phase 7 — Ollama adapter ─────────────────────────────────────────────
+  /**
+   * Base URL of the local Ollama server. The Ollama client will ping this
+   * host for a health check before the first extraction request. If
+   * unreachable it falls back to the deterministic parser without waiting
+   * for the full generate timeout.
+   */
+  OLLAMA_BASE_URL: optionalEnv('OLLAMA_BASE_URL', 'http://localhost:11434'),
+  /**
+   * Ollama model tag to use for extraction. Defaults to qwen3:8b.
+   * MedGemma is reserved for a later medical interpretation phase.
+   */
+  OLLAMA_MODEL: optionalEnv('OLLAMA_MODEL', 'qwen3:8b'),
+  /**
+   * HTTP timeout in milliseconds for Ollama generate calls. The health check
+   * uses a shorter timeout (5 s) to fail fast when Ollama is not running.
+   */
+  OLLAMA_TIMEOUT_MS: Number.parseInt(optionalEnv('OLLAMA_TIMEOUT_MS', '60000'), 10),
 } as const;
 
 export type AppConfig = typeof config;

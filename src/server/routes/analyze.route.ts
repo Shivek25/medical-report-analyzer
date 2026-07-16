@@ -9,7 +9,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { parseRawText } from '../../lib/parser/orchestrator.js';
 import { buildReportSummary } from '../../lib/summarizer/summary-builder.js';
-import { extractWithLlm, createStubClient } from '../../lib/extraction/index.js';
+import { extractWithLlm, createExtractionClient } from '../../lib/extraction/index.js';
 import type { IngestionResult } from '../../lib/types/index.js';
 import { config } from '../../shared/config.js';
 import { logger } from '../../shared/logger.js';
@@ -53,7 +53,7 @@ export const analyzeRoute = {
       let report: ReturnType<typeof parseRawText>;
       let usedLlmPath = false;
       if (config.LLM_EXTRACTION_ENABLED) {
-        const outcome = await extractWithLlm(ingestion, createStubClient({ enabled: true }), {
+        const outcome = await extractWithLlm(ingestion, createExtractionClient(config), {
           confidenceThreshold: config.LLM_CONFIDENCE_THRESHOLD,
         });
         if (outcome.usedLlmPath && !outcome.lowYield) {
