@@ -28,7 +28,7 @@
 - Wire export route
 - Build `DownloadButton` component
 
-## Phase 6 — LLM-Assisted Structured Extraction
+## Phase 6 — LLM-Assisted Structured Extraction ✅
 - Provider-agnostic `LlmClient` interface + deterministic stub (no network)
 - Bounded classification of candidate blocks into metadata / section_header /
   lab_result / noise / uncertain (strict JSON, evidence + confidence + reason)
@@ -41,7 +41,23 @@
 - Regression tests on seen (Thyrocare) + unseen (Smart Health Report) PDFs
 - Prompt spec: `prompts/phase-06-llm-extraction.md`
 
-## Phase 4 — Polish & Production
+## Phase 7 — Ollama-Backed LLM Extraction (qwen3:8b) ✅
+- Local, private Ollama extraction via `qwen3:8b`
+- No paid API, no external network requests
+- Strict response contract + upstream evidence guard protecting the extractor loop
+- Deterministic, zero-wait fallback on network / shape / parsing errors
+- Configurable via `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`
+- Extensive regression suite simulating optimistic LLM outputs to verify validation gate robustness
+
+## Phase 8 — Intelligent Document Layout Engine ✅
+- Replaced flat-text extraction with a spatial reconstruction pipeline
+- Intercepted pdf.js `pagerender` to capture X, Y, width, and height of tokens
+- Implemented robust grouping of baseline tokens and header/footer stripping
+- Integrated table reconstruction to cleanly unwrap multi-line test names and columns
+- Kept the old flat-text path as a hard deterministic fallback
+- Wired `analyzeLayout` output identically to both the deterministic and LLM parsers
+
+## Phase — Polish & Production
 - Authentication / rate limiting
 - Cloud storage for uploads and outputs
 - Deployment (Docker / Netlify / Railway)

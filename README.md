@@ -86,6 +86,9 @@ outputs/               # Generated PDFs (git-ignored)
 | **1** | ✅ Complete | PDF text extraction, structured parsing, Zod validation, upload API |
 | **2** | ✅ Complete | Structured report parsing & validation (`parseRawText` pipeline → `StructuredReport`) |
 | **3** | ✅ Complete | Deterministic summary generation (`buildReportSummary`) + PDF export |
+| **6** | ✅ Complete | LLM-assisted structured extraction + deterministic fallback & validation |
+| **7** | ✅ Complete | Local Ollama extraction (`qwen3:8b`) with strict safety guards |
+| **8** | ✅ Complete | Intelligent Document Layout Engine (spatial reconstruction, fallback) |
 | **4** | ⬜ Planned | Auth, cloud storage, deployment |
 
 > **Note:** Phase 3 was originally specced as LLM-based summarization (see `docs/PHASES.md`). The implemented approach is **deterministic and LLM-free** — the legacy `generateSummary` stub is deprecated.

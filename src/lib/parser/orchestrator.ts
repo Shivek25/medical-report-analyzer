@@ -63,6 +63,7 @@ import { build as buildQuality, type QualityCounts } from './quality.js';
 import { UNIT_TOKEN_ANCHORED } from './patterns.js';
 import { detect as detectRows } from './row-detector.js';
 import { clean as cleanText } from './text-cleaner.js';
+import { analyzeLayout, candidatesToText } from '../layout/index.js';
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -100,9 +101,45 @@ export function parseRawText(
   //    fresh empty `StructuredReport` with the error message in
   //    `extractionQuality.warnings`.
   try {
-    const cleanedText = cleanText(input.extractedText);
+    // Phase 8: when the extractor captured spatial layout data, use the layout
+    // engine to produce a cleaner text representation before row detection.
+    // The layout engine collapses multi-line rows, strips headers/footers and
+    // boilerplate, and reconstructs table columns — dramatically reducing the
+    // merge heuristics in row-detector.ts.
+    //
+    // If layoutPages is absent or the engine throws, we fall back to the plain
+    // flat-text path (identical to pre-Phase-8 behaviour).
+    let sourceText = input.extractedText;
+    const layoutWarnings: string[] = [];
+    if (input.layoutPages && input.layoutPages.length > 0) {
+      try {
+        const layoutDoc = analyzeLayout(
+          input.layoutPages,
+          input.isFullySpatial ?? false,
+        );
+        const layoutText = candidatesToText(layoutDoc.candidates);
+        if (layoutText.trim().length > 0) {
+          sourceText = layoutText;
+          logger.info('parser:layout-engine-active', {
+            blocks: layoutDoc.blocks.length,
+            candidates: layoutDoc.candidates.length,
+            isFullySpatial: layoutDoc.isFullySpatial,
+          });
+        } else {
+          layoutWarnings.push('Layout engine produced empty text — using flat-text fallback');
+        }
+      } catch (layoutErr: unknown) {
+        const msg = layoutErr instanceof Error ? layoutErr.message : String(layoutErr);
+        layoutWarnings.push(`Layout engine failed — using flat-text fallback: ${msg}`);
+        logger.warn('parser:layout-engine-failed', { error: msg });
+      }
+    }
+
+    const cleanedText = cleanText(sourceText);
     const metadata = extractMetadata(cleanedText);
     const detectResult = detectRows(cleanedText);
+    // Merge any layout warnings into the detect result's warnings.
+    detectResult.warnings.push(...layoutWarnings);
     const categorisedRows = assignCategories(detectResult.rows, cleanedText);
 
     // Per-row processing. Counts collected as we go so the Quality
