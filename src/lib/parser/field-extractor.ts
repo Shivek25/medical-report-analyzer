@@ -370,8 +370,16 @@ function tryParseRange(
   }
 
   // 2. Single-token comparison: "<30".
-  if (REFERENCE_RANGE_COMPARISON.test(tok0)) {
-    return { range: { text: tok0 }, nextIdx: startIdx + 1 };
+  const compMatch1 = REFERENCE_RANGE_COMPARISON.exec(tok0);
+  if (compMatch1 !== null) {
+    const operator = compMatch1[1]!;
+    const bound = Number.parseFloat(compMatch1[2]!);
+    const range: LabReferenceRange = { text: tok0 };
+    if (Number.isFinite(bound)) {
+      if (operator === '<' || operator === '<=' || operator === '\u2264') range.high = bound;
+      else if (operator === '>' || operator === '>=' || operator === '\u2265') range.low = bound;
+    }
+    return { range, nextIdx: startIdx + 1 };
   }
 
   // 3. Single-token qualitative: "Negative".
@@ -382,8 +390,16 @@ function tryParseRange(
   // 4. Two-token comparison: "< 30".
   if (startIdx + 1 < remaining.length) {
     const combined2 = `${tok0} ${remaining[startIdx + 1]!}`;
-    if (REFERENCE_RANGE_COMPARISON.test(combined2)) {
-      return { range: { text: combined2 }, nextIdx: startIdx + 2 };
+    const compMatch2 = REFERENCE_RANGE_COMPARISON.exec(combined2);
+    if (compMatch2 !== null) {
+      const operator = compMatch2[1]!;
+      const bound = Number.parseFloat(compMatch2[2]!);
+      const range: LabReferenceRange = { text: combined2 };
+      if (Number.isFinite(bound)) {
+        if (operator === '<' || operator === '<=' || operator === '\u2264') range.high = bound;
+        else if (operator === '>' || operator === '>=' || operator === '\u2265') range.low = bound;
+      }
+      return { range, nextIdx: startIdx + 2 };
     }
   }
 

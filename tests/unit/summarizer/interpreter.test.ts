@@ -22,98 +22,98 @@ function makeEntry(overrides: Partial<LabEntry> = {}): LabEntry {
 }
 
 describe('formatReferenceRange', () => {
-  it('formats low–high range', () => {
+  it('formats low–high range', async () => {
     expect(formatReferenceRange({ low: 4.0, high: 11.0 })).toBe('4 – 11');
   });
 
-  it('formats high-only range', () => {
+  it('formats high-only range', async () => {
     expect(formatReferenceRange({ high: 5.0 })).toBe('up to 5');
   });
 
-  it('formats low-only range', () => {
+  it('formats low-only range', async () => {
     expect(formatReferenceRange({ low: 1.5 })).toBe('1.5 or above');
   });
 
-  it('formats text-only range', () => {
+  it('formats text-only range', async () => {
     expect(formatReferenceRange({ text: 'Negative' })).toBe('Negative');
   });
 
-  it('returns undefined for undefined input', () => {
+  it('returns undefined for undefined input', async () => {
     expect(formatReferenceRange(undefined)).toBeUndefined();
   });
 
-  it('returns undefined for empty object (no bounds, no text)', () => {
+  it('returns undefined for empty object (no bounds, no text)', async () => {
     expect(formatReferenceRange({})).toBeUndefined();
   });
 
-  it('strips trailing zeros from decimal numbers', () => {
+  it('strips trailing zeros from decimal numbers', async () => {
     expect(formatReferenceRange({ low: 4.10, high: 11.00 })).toBe('4.1 – 11');
   });
 });
 
 describe('interpretFinding', () => {
-  it('generates "Above normal range" for high severity with ref range', () => {
+  it('generates "Above normal range" for high severity with ref range', async () => {
     const entry = makeEntry({ referenceRange: { low: 0, high: 5 }, unit: 'mg/dL' });
-    const result = interpretFinding(entry, 'high');
+    const result = await interpretFinding(entry, 'high');
     expect(result).toContain('Above normal range');
     expect(result).toContain('ref:');
     expect(result).toContain('0 – 5');
     expect(result).toContain('mg/dL');
   });
 
-  it('generates "Below normal range" for low severity', () => {
+  it('generates "Below normal range" for low severity', async () => {
     const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
-    const result = interpretFinding(entry, 'low');
+    const result = await interpretFinding(entry, 'low');
     expect(result).toContain('Below normal range');
   });
 
-  it('generates "Significantly above" for critical-high', () => {
+  it('generates "Significantly above" for critical-high', async () => {
     const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
-    const result = interpretFinding(entry, 'critical-high');
+    const result = await interpretFinding(entry, 'critical-high');
     expect(result).toContain('Significantly above');
   });
 
-  it('generates "Significantly below" for critical-low', () => {
+  it('generates "Significantly below" for critical-low', async () => {
     const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
-    const result = interpretFinding(entry, 'critical-low');
+    const result = await interpretFinding(entry, 'critical-low');
     expect(result).toContain('Significantly below');
   });
 
-  it('generates "Slightly above" for borderline-high', () => {
+  it('generates "Slightly above" for borderline-high', async () => {
     const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
-    const result = interpretFinding(entry, 'borderline-high');
+    const result = await interpretFinding(entry, 'borderline-high');
     expect(result).toContain('Slightly above');
   });
 
-  it('generates "Slightly below" for borderline-low', () => {
+  it('generates "Slightly below" for borderline-low', async () => {
     const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
-    const result = interpretFinding(entry, 'borderline-low');
+    const result = await interpretFinding(entry, 'borderline-low');
     expect(result).toContain('Slightly below');
   });
 
-  it('generates "Within normal range" for normal', () => {
+  it('generates "Within normal range" for normal', async () => {
     const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
-    const result = interpretFinding(entry, 'normal');
+    const result = await interpretFinding(entry, 'normal');
     expect(result).toContain('Within normal range');
   });
 
-  it('handles missing reference range gracefully', () => {
+  it('handles missing reference range gracefully', async () => {
     const entry = makeEntry();
-    const result = interpretFinding(entry, 'high');
+    const result = await interpretFinding(entry, 'high');
     expect(result).toBe('Above normal range');
     expect(result).not.toContain('ref:');
   });
 
-  it('generates "Unable to interpret" for skipped entry with no ref range', () => {
+  it('generates "Unable to interpret" for skipped entry with no ref range', async () => {
     const entry = makeEntry({ value: 'Negative' });
-    const result = interpretFinding(entry, 'skipped');
+    const result = await interpretFinding(entry, 'skipped');
     expect(result).toContain('Unable to interpret');
     expect(result).toContain('reference range not available');
   });
 
-  it('generates "Non-numeric result" for skipped entry with ref range', () => {
+  it('generates "Non-numeric result" for skipped entry with ref range', async () => {
     const entry = makeEntry({ value: 'Reactive', referenceRange: { text: 'Non-Reactive' } });
-    const result = interpretFinding(entry, 'skipped');
+    const result = await interpretFinding(entry, 'skipped');
     expect(result).toContain('Non-numeric result');
     expect(result).toContain('manual review');
   });
@@ -132,14 +132,14 @@ describe('interpretFinding', () => {
   ];
 
   for (const word of FORBIDDEN_WORDS) {
-    it(`never contains "${word}" in any classification`, () => {
+    it(`never contains "${word}" in any classification`, async () => {
       const classifications = [
         'high', 'low', 'critical-high', 'critical-low',
         'borderline-high', 'borderline-low', 'normal', 'skipped',
       ] as const;
       const entry = makeEntry({ referenceRange: { low: 1, high: 10 } });
       for (const c of classifications) {
-        const result = interpretFinding(entry, c);
+        const result = await interpretFinding(entry, c);
         expect(result.toLowerCase()).not.toContain(word);
       }
     });

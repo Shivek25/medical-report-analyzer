@@ -11,7 +11,7 @@ const SAMPLES_DIR = path.resolve(__dirname, '../../data/samples');
 
 describe('Parser Noise Regression Tests', () => {
   const app = createServer();
-  const sampleFiles = ['shivek_June25.pdf', 'shivek_March26.pdf', 'shivek_urm_March26.pdf'];
+  const sampleFiles = ['shivek_June25.pdf', 'shivek_March26.pdf', 'shivek_urm_March26.pdf', 'Saksham_report.pdf'];
 
   const noiseKeywords = [
     'street', 'floor', 'sector', 'noida', 'ghaziabad', 'delhi', 'road', 'suite', 'address',
@@ -144,17 +144,18 @@ describe('Parser Noise Regression Tests', () => {
       assertNoNoise(summary.overviewText, 'Overview text');
 
       // 6. Assert that genuine lab test rows are still extracted
-      if (fileName !== 'shivek_urm_March26.pdf') {
-        const foundGenuine = report.entries.some((entry: any) =>
-          genuineLabKeywords.some(kw => entry.testName.toUpperCase().includes(kw.toUpperCase()))
-        );
-        expect(foundGenuine, `Expected to find some genuine lab entries in ${fileName}`).toBe(true);
-      } else {
+      if (fileName === 'shivek_urm_March26.pdf') {
         // For urine report, check for protein or specific gravity or glucose etc.
         const foundGenuine = report.entries.some((entry: any) =>
           ['PROTEIN', 'GLUCOSE', 'GRAVITY', 'PH'].some(kw => entry.testName.toUpperCase().includes(kw))
         );
         expect(foundGenuine, `Expected to find some genuine lab entries in urine report`).toBe(true);
+      } else {
+        // Blood report: expect at least one standard blood analyte.
+        const foundGenuine = report.entries.some((entry: any) =>
+          genuineLabKeywords.some(kw => entry.testName.toUpperCase().includes(kw.toUpperCase()))
+        );
+        expect(foundGenuine, `Expected to find some genuine lab entries in ${fileName}`).toBe(true);
       }
     });
   }
@@ -168,13 +169,21 @@ describe('Parser Noise Regression Tests', () => {
 // ────────────────────────────────────────────────────────────────────────────────
 describe('Parser Strict Noise Regression (boilerplate / descriptors)', () => {
   const app = createServer();
-  const sampleFiles = ['shivek_June25.pdf', 'shivek_March26.pdf', 'shivek_urm_March26.pdf'];
+  const sampleFiles = ['shivek_June25.pdf', 'shivek_March26.pdf', 'shivek_urm_March26.pdf', 'Saksham_report.pdf'];
 
   /**
-   * Tokens that must NEVER appear as a test name (whole-word, case-insensitive).
-   * These are the generic assay descriptors, section headers, and column labels
-   * that previously leaked into findings.
+   * Per-file cap on multi-line merge warnings.
+   * Tuned after capturing the post-fix count for each PDF.
+   * Saksham_report.pdf is a larger multi-page report (325 blocks, 154 raw
+   * entries before normalization) so proportionally more merges are expected.
    */
+  const maxMergeWarnings: Record<string, number> = {
+    'shivek_June25.pdf':      5,
+    'shivek_March26.pdf':     5,
+    'shivek_urm_March26.pdf': 5,
+    'Saksham_report.pdf':     15,  // larger report; 9 observed, cap at 15
+  };
+
   const forbiddenTestNameTokens = [
     'Calculated',
     'Flow Cytometry',
@@ -321,12 +330,13 @@ describe('Parser Strict Noise Regression (boilerplate / descriptors)', () => {
       // ── 6. Multi-line merge warnings materially reduced & not from boilerplate ─
       const warnings: string[] = report.extractionQuality.warnings ?? [];
       const mergeWarnings = warnings.filter((w) => w.includes('Multi-line merge exceeded'));
-      // Baseline: prior to the fix each sample produced dozens of these; cap to a
-      // materially lower count. Tuned after capturing the post-fix number.
+      // Baseline: prior to the Phase 8 fix each sample produced dozens of these.
+      // Threshold is per-file since Saksham_report.pdf is a larger multi-page document.
+      const mergeWarningCap = maxMergeWarnings[fileName] ?? 5;
       expect(
         mergeWarnings.length,
-        `${fileName}: multi-line merge warnings must be materially reduced (got ${mergeWarnings.length})`,
-      ).toBeLessThanOrEqual(5);
+        `${fileName}: multi-line merge warnings must be materially reduced (got ${mergeWarnings.length}, cap=${mergeWarningCap})`,
+      ).toBeLessThanOrEqual(mergeWarningCap);
     });
   }
 });

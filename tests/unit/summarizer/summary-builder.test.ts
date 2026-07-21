@@ -72,9 +72,9 @@ function makeReport(
 describe('buildReportSummary', () => {
   // ── Structural integrity ──────────────────────────────────────────────
 
-  it('returns a valid ReportSummary for an empty entries array', () => {
+  it('returns a valid ReportSummary for an empty entries array', async () => {
     const report = makeReport([]);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.metadata).toEqual(report.metadata);
     expect(summary.generationMeta.totalEntries).toBe(0);
@@ -88,27 +88,27 @@ describe('buildReportSummary', () => {
     expect(summary.disclaimer).toBe(SUMMARY_DISCLAIMER);
   });
 
-  it('always includes the standard disclaimer', () => {
+  it('always includes the standard disclaimer', async () => {
     const report = makeReport([makeEntry()]);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
     expect(summary.disclaimer).toBe(SUMMARY_DISCLAIMER);
   });
 
-  it('uses the pinned timestamp', () => {
+  it('uses the pinned timestamp', async () => {
     const report = makeReport([]);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
     expect(summary.generationMeta.generatedAt).toBe('2025-07-01T12:00:00.000Z');
   });
 
   // ── All-normal report ─────────────────────────────────────────────────
 
-  it('handles an all-normal report correctly', () => {
+  it('handles an all-normal report correctly', async () => {
     const entries = [
       makeEntry({ testName: 'Hemoglobin', value: '14', referenceRange: { low: 12, high: 16 } }),
       makeEntry({ testName: 'WBC', value: '7', referenceRange: { low: 4, high: 11 }, unit: 'K/uL' }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.abnormalFindings).toEqual([]);
     expect(summary.generationMeta.abnormalCount).toBe(0);
@@ -119,14 +119,14 @@ describe('buildReportSummary', () => {
 
   // ── Mixed normal/abnormal ─────────────────────────────────────────────
 
-  it('correctly separates normal and abnormal entries', () => {
+  it('correctly separates normal and abnormal entries', async () => {
     const entries = [
       makeEntry({ testName: 'Normal Test', value: '5', referenceRange: { low: 1, high: 10 } }),
       makeEntry({ testName: 'High Test', value: '15', referenceRange: { low: 1, high: 10 } }),
       makeEntry({ testName: 'Low Test', value: '0.3', referenceRange: { low: 1, high: 10 } }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.generationMeta.abnormalCount).toBe(2);
     expect(summary.generationMeta.normalCount).toBe(1);
@@ -142,7 +142,7 @@ describe('buildReportSummary', () => {
 
   // ── Uncertain entries isolation ───────────────────────────────────────
 
-  it('places uncertain entries only in uncertainEntries, not in normal/abnormal', () => {
+  it('places uncertain entries only in uncertainEntries, not in normal/abnormal', async () => {
     const entries = [
       makeEntry({ testName: 'Normal Test', value: '5', referenceRange: { low: 1, high: 10 } }),
       makeEntry({
@@ -161,7 +161,7 @@ describe('buildReportSummary', () => {
       }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     // Should have 1 normal, 0 abnormal, 2 uncertain
     expect(summary.generationMeta.normalCount).toBe(1);
@@ -186,7 +186,7 @@ describe('buildReportSummary', () => {
     expect(allAbnormalNames).not.toContain('Uncertain High');
   });
 
-  it('preserves uncertaintyReason in uncertain entries', () => {
+  it('preserves uncertaintyReason in uncertain entries', async () => {
     const entries = [
       makeEntry({
         testName: 'Bad OCR',
@@ -197,20 +197,20 @@ describe('buildReportSummary', () => {
       }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.uncertainEntries[0].uncertaintyReason).toBe('OCR confidence low');
   });
 
   // ── Skipped entries ───────────────────────────────────────────────────
 
-  it('counts non-numeric entries without flags as skipped', () => {
+  it('counts non-numeric entries without flags as skipped', async () => {
     const entries = [
       makeEntry({ testName: 'HIV Antibody', value: 'Negative' }),
       makeEntry({ testName: 'Hemoglobin', value: '14', referenceRange: { low: 12, high: 16 } }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.generationMeta.skippedCount).toBe(1);
     expect(summary.generationMeta.normalCount).toBe(1);
@@ -219,7 +219,7 @@ describe('buildReportSummary', () => {
 
   // ── Generation metadata accuracy ──────────────────────────────────────
 
-  it('has accurate generationMeta counters for a mixed report', () => {
+  it('has accurate generationMeta counters for a mixed report', async () => {
     const entries = [
       makeEntry({ testName: 'Normal', value: '5', referenceRange: { low: 1, high: 10 } }),
       makeEntry({ testName: 'High', value: '15', referenceRange: { low: 1, high: 10 } }),
@@ -232,7 +232,7 @@ describe('buildReportSummary', () => {
       }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.generationMeta.totalEntries).toBe(4);
     expect(summary.generationMeta.normalCount).toBe(1);
@@ -244,13 +244,13 @@ describe('buildReportSummary', () => {
 
   // ── Overview text ─────────────────────────────────────────────────────
 
-  it('includes abnormal count in overview text', () => {
+  it('includes abnormal count in overview text', async () => {
     const entries = [
       makeEntry({ testName: 'A', value: '15', referenceRange: { low: 1, high: 10 } }),
       makeEntry({ testName: 'B', value: '5', referenceRange: { low: 1, high: 10 } }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.overviewText).toContain('1 of 2');
     expect(summary.overviewText).toContain('outside the normal range');
@@ -258,27 +258,27 @@ describe('buildReportSummary', () => {
 
   // ── Low-confidence report ─────────────────────────────────────────────
 
-  it('notes low confidence in overview when confidence is below 0.7', () => {
+  it('notes low confidence in overview when confidence is below 0.7', async () => {
     const report = makeReport(
       [makeEntry()],
       {},
       { confidence: 0.4, lowConfidence: true },
     );
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.overviewText).toContain('extraction confidence');
   });
 
   // ── Grouping correctness ──────────────────────────────────────────────
 
-  it('groups abnormal findings by category', () => {
+  it('groups abnormal findings by category', async () => {
     const entries = [
       makeEntry({ testName: 'LDL', value: '200', category: 'Lipid', referenceRange: { low: 0, high: 130 } }),
       makeEntry({ testName: 'HDL', value: '25', category: 'Lipid', referenceRange: { low: 40, high: 60 } }),
       makeEntry({ testName: 'Creatinine', value: '3', category: 'Renal', referenceRange: { low: 0.5, high: 1.2 } }),
     ];
     const report = makeReport(entries);
-    const summary = buildReportSummary(report, NOW);
+    const summary = await buildReportSummary(report, NOW);
 
     expect(summary.abnormalFindings).toHaveLength(2); // Lipid, Renal
     const categories = summary.abnormalFindings.map((g) => g.category);

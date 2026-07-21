@@ -364,24 +364,16 @@ describe('Normalizer property tests', () => {
 
     // ─── Sub-property B: non-numeric ranges leave low/high undefined ─────
     //
-    // Three flavours of non-numeric reference range, all of which must
-    // fail to match REFERENCE_RANGE_NUMERIC and therefore round-trip
-    // through `text` with `low`/`high` left undefined (Req 6.5):
+    // Two flavours of non-numeric reference range, all of which must
+    // fail to match REFERENCE_RANGE_NUMERIC and REFERENCE_RANGE_COMPARISON
+    // and therefore round-trip through `text` with `low`/`high` left undefined (Req 6.5):
     //
-    //   1. Comparison operator + bound:   "< 30", ">= 1.5", "≤ 5".
-    //   2. Qualitative tokens:            "Negative", "Reactive", ...
-    //   3. Numeric-with-non-numeric-suffix: "197-771 pg/ml", "5-10 units".
+    //   1. Qualitative tokens:            "Negative", "Reactive", ...
+    //   2. Numeric-with-non-numeric-suffix: "197-771 pg/ml", "5-10 units".
     //
     // Inputs are generated WITHOUT leading or trailing whitespace so the
     // `.text` equality assertion is unambiguous (the Normalizer always
     // trims defined string fields per Req 6.1).
-    const comparisonRangeArb = fc
-      .tuple(
-        fc.constantFrom('<', '>', '<=', '>=', '\u2264', '\u2265'),
-        wsPad,
-        numericTokenArb,
-      )
-      .map(([op, ws, n]) => `${op}${ws}${n}`);
 
     const qualitativeRangeArb = fc.constantFrom(
       'Negative',
@@ -415,13 +407,14 @@ describe('Normalizer property tests', () => {
       .map(([lo, dash, hi, suffix]) => `${lo}${dash}${hi}${suffix}`);
 
     const nonNumericRangeArb = fc
-      .oneof(comparisonRangeArb, qualitativeRangeArb, numericWithSuffixArb)
+      .oneof(qualitativeRangeArb, numericWithSuffixArb)
       // Defensive: drop any input that — by accident of the generator —
       // happens to match the strict numeric regex. This guards the
       // property against future generator changes that might inadvertently
       // emit a numeric form.
       .filter(
-        (s) => !/^\s*\d+(?:\.\d+)?\s*[-\u2013]\s*\d+(?:\.\d+)?\s*$/.test(s),
+        (s) => !/^\s*\d+(?:\.\d+)?\s*[-\u2013]\s*\d+(?:\.\d+)?\s*$/.test(s) &&
+               !/^\s*(<=|>=|<|>|\u2264|\u2265)\s*\d+(?:\.\d+)?\s*$/.test(s),
       );
 
     fc.assert(
@@ -443,6 +436,44 @@ describe('Normalizer property tests', () => {
         // The original text round-trips verbatim. By construction the
         // input has no surrounding whitespace, so trimming is a no-op
         // and equality is exact.
+        expect(result.referenceRange?.text).toBe(text);
+      }),
+      { numRuns: 200 },
+    );
+
+    // ─── Sub-property C: one-sided comparison ranges ─────────────────────
+    //
+    // One-sided comparison operator + bound: "< 30", ">= 1.5", "≤ 5"
+    // Sets `high` for < / <= / ≤.
+    // Sets `low` for > / >= / ≥.
+    const comparisonRangeArb = fc
+      .tuple(
+        fc.constantFrom('<', '>', '<=', '>=', '\u2264', '\u2265'),
+        wsPad,
+        numericTokenArb,
+      )
+      .map(([op, ws, n]) => ({ op, bound: n, text: `${op}${ws}${n}` }));
+
+    fc.assert(
+      fc.property(comparisonRangeArb, ({ op, bound, text }) => {
+        const entry: LabEntry = {
+          testName: 'Marker',
+          value: '0',
+          referenceRange: { text },
+          category: 'Uncategorized',
+          uncertain: false,
+        };
+
+        const result = normalize(entry);
+
+        expect(result.referenceRange).toBeDefined();
+        if (op === '<' || op === '<=' || op === '\u2264') {
+          expect(result.referenceRange?.high).toBe(Number.parseFloat(bound));
+          expect(result.referenceRange?.low).toBeUndefined();
+        } else {
+          expect(result.referenceRange?.low).toBe(Number.parseFloat(bound));
+          expect(result.referenceRange?.high).toBeUndefined();
+        }
         expect(result.referenceRange?.text).toBe(text);
       }),
       { numRuns: 200 },

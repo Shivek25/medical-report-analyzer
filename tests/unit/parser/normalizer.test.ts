@@ -49,8 +49,7 @@ describe('normalize (happy path)', () => {
 });
 
 describe('normalize (edge cases)', () => {
-  it('keeps a comparison-operator range like "< 30" in text with low/high undefined', () => {
-    // Validates: Requirements 6.5
+  it('parses a comparison-operator range like "< 30" to set high limit (safety fix)', () => {
     const entry: LabEntry = {
       testName: 'CRP',
       value: '4.2',
@@ -64,7 +63,7 @@ describe('normalize (edge cases)', () => {
 
     expect(result.referenceRange?.text).toBe('< 30');
     expect(result.referenceRange?.low).toBeUndefined();
-    expect(result.referenceRange?.high).toBeUndefined();
+    expect(result.referenceRange?.high).toBe(30);
   });
 
   it('keeps a qualitative range like "Negative" in text with low/high undefined', () => {

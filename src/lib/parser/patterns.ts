@@ -308,7 +308,7 @@ export const MONTH_ABBR_MAP: Readonly<Record<string, number>> = Object.freeze({
  * actual ISO conversion.
  */
 export interface DateFormatSpec {
-  readonly id: 'DD/MM/YYYY' | 'DD-MM-YYYY' | 'DD MMM YYYY' | 'MMM DD, YYYY';
+  readonly id: 'DD/MM/YYYY' | 'DD-MM-YYYY' | 'DD MMM YYYY' | 'MMM DD, YYYY' | 'DD/MMM/YYYY';
   readonly regex: RegExp;
   /** Maps a date component to its 1-based capture-group index in `regex`. */
   readonly parts: {
@@ -325,7 +325,7 @@ export interface DateFormatSpec {
  */
 export const DATE_FORMAT_DD_MM_YYYY_SLASH: DateFormatSpec = {
   id: 'DD/MM/YYYY',
-  regex: /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/,
+  regex: /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,?\s+.*)?$/,
   parts: { day: 1, month: 2, year: 3, monthIsAbbr: false },
 };
 
@@ -334,16 +334,26 @@ export const DATE_FORMAT_DD_MM_YYYY_SLASH: DateFormatSpec = {
  */
 export const DATE_FORMAT_DD_MM_YYYY_DASH: DateFormatSpec = {
   id: 'DD-MM-YYYY',
-  regex: /^\s*(\d{1,2})-(\d{1,2})-(\d{4})\s*$/,
+  regex: /^\s*(\d{1,2})-(\d{1,2})-(\d{4})(?:,?\s+.*)?$/,
   parts: { day: 1, month: 2, year: 3, monthIsAbbr: false },
 };
 
 /**
  * `DD MMM YYYY` — e.g., `09 Mar 2026` or `9 March 2026` (3+ letters).
+ * The comma after the month is optional.
  */
 export const DATE_FORMAT_DD_MMM_YYYY: DateFormatSpec = {
   id: 'DD MMM YYYY',
-  regex: /^\s*(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})\s*$/,
+  regex: /^\s*(\d{1,2})\s+([A-Za-z]{3,}),?\s+(\d{4})(?:,?\s+.*)?$/,
+  parts: { day: 1, month: 2, year: 3, monthIsAbbr: true },
+};
+
+/**
+ * `DD/MMM/YYYY` — e.g., `23/Mar/2026`
+ */
+export const DATE_FORMAT_DD_MMM_YYYY_SLASH: DateFormatSpec = {
+  id: 'DD/MMM/YYYY',
+  regex: /^\s*(\d{1,2})\/([A-Za-z]{3,})\/(\d{4})(?:,?\s+.*)?$/,
   parts: { day: 1, month: 2, year: 3, monthIsAbbr: true },
 };
 
@@ -353,7 +363,7 @@ export const DATE_FORMAT_DD_MMM_YYYY: DateFormatSpec = {
  */
 export const DATE_FORMAT_MMM_DD_YYYY: DateFormatSpec = {
   id: 'MMM DD, YYYY',
-  regex: /^\s*([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})\s*$/,
+  regex: /^\s*([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})(?:,?\s+.*)?$/,
   parts: { day: 2, month: 1, year: 3, monthIsAbbr: true },
 };
 
@@ -366,6 +376,7 @@ export const ACCEPTED_DATE_FORMATS: readonly DateFormatSpec[] = Object.freeze([
   DATE_FORMAT_DD_MM_YYYY_SLASH,
   DATE_FORMAT_DD_MM_YYYY_DASH,
   DATE_FORMAT_DD_MMM_YYYY,
+  DATE_FORMAT_DD_MMM_YYYY_SLASH,
   DATE_FORMAT_MMM_DD_YYYY,
 ]);
 
