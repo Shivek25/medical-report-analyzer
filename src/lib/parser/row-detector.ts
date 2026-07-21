@@ -195,6 +195,23 @@ const NON_DATA_PREFIXES = [
   'value ',           // catches "VALUE some text" column header leaks
   'technology ',
   'methodology ',
+  // ── Redcliffe Labs panel-level summary stats ─────────────────────────────────
+  // "3 Out of Range 0 Borderline 14 Within Range" — score cards between sections
+  'out of range',
+  'within range',
+  // ── Numbered ASCVD / cardiovascular risk factor bullet lines ────────────────
+  // "1.Established ASCVD 2.Diabetes with 2 major risk factors..."
+  '1.established',
+  '1. three major',
+  '1. age',
+  '2. age',
+  // ── Redcliffe Labs status/marketing line ─────────────────────────────────────
+  'liver function 100',
+  // ── Interpretation section headers ──────────────────────────────────────────
+  'interpretation for hba',
+  'interpretation for hb',
+  'very high -',
+  'very high –',
 ] as const;
 
 /**
@@ -305,8 +322,18 @@ function isDisclaimerLine(line: string): boolean {
   // Genuine lab rows are always short (<60 chars in the cleaned format).
   if (trimmed.length >= 80 && !/\d/.test(trimmed.slice(0, 30))) return true;
 
+  // Long prose sentences (>= 60 chars) that end with a full stop and contain
+  // clinical / legal language. These are paragraph fragments that still carry a
+  // stray number at the end or mid-sentence, so the previous guard misses them.
+  if (trimmed.length >= 60 && /\.$/.test(trimmed)) {
+    if (
+      /\b(?:diabetes|mellitus|kidney|liver|disease|disorder|albumin|organ|damage|laboratory|liable|delay|performance|obligation|arising|connection|events)\b/i.test(trimmed)
+    ) return true;
+  }
+
   return false;
 }
+
 
 /**
  * True iff the line is a risk-classification / interpretation table entry
@@ -351,7 +378,21 @@ function isInterpretationTableLine(line: string): boolean {
   // (e.g., "E.C.L.I.A ng/dL 80-200"). These are column-extraction artefacts
   // where the technology token was not consumed by the stitcher.
   // Only filter when the second token is a unit (not a test name word).
-  if (/^(?:E\.C\.L\.I\.A|ECLIA|H\.P\.L\.C|HPLC|C\.L\.I\.A|CLIA|IMMUNOTURBIDIMETRY|PHOTOMETRY|CALCULATED|CALCULATION|CHEMILUMINESCENCE|COLORIMETRY|TURBIDIMETRY|NEPHELOMETRY|SPECTROPHOTOMETRY|IMMUNOASSAY|ELISA|PCR)\s+(?:ng|pg|µg|ug|μg|mcg|mg|gm|g|m?IU|m?U|mmol|µmol|umol|nmol|pmol|mol|mEq|fL|fl|%|cells|million|lakhs|thousand|\/)\S*/.test(trimmed)) return true;
+  if (/^(?:E\.C\.L\.I\.A|ECLIA|H\.P\.L\.C|HPLC|C\.L\.I\.A|CLIA|IMMUNOTURBIDIMETRY|PHOTOMETRY|CALCULATED|CALCULATION|CHEMILUMINESCENCE|COLORIMETRY|TURBIDIMETRY|NEPHELOMETRY|SPECTROPHOTOMETRY|IMMUNOASSAY|ELISA|PCR)\s+(?:ng|pg|µg|ug|μg|mcg|mg|gm|g|m?IU|m?U|mmol|µmol|umol|nmol|pmol|mol|mEq|fL|fl|%|cells|million|lakhs|thousand|\/)/.test(trimmed)) return true;
+  // Pattern: Redcliffe Labs panel summary score card:
+  //   "3 Out of Range 0 Borderline 14 Within Range"
+  if (/\d+\s+out of range\b/i.test(trimmed)) return true;
+  if (/\bwithin range\b/i.test(trimmed)) return true;
+  // Pattern: numbered risk factor bullet list lines:
+  //   "1.Established ASCVD 2.Diabetes with 2 major risk factors..."
+  //   "1. Three major ASCVD risk factors 2. Diabetes..."
+  if (/\bascvd\b/i.test(trimmed)) return true;
+  // Pattern: trimester reference rows: "2nd Trimester 0.2 - 3.0 3rd Trimester 0.3 - 3.0"
+  if (/\b(?:1st|2nd|3rd)\s+trimester\b/i.test(trimmed)) return true;
+  // Pattern: "Normal 70 - 100" / "Diabetes >= 126" — glucose interpretation table
+  if (/^(?:normal|diabetes|pre-?diabetes)\s+[0-9≥≤<>]/i.test(trimmed)) return true;
+  // Pattern: "Very High - >=500 >=190 >=220" — multi-threshold risk table row
+  if (/^very high\s*[-\u2013]/i.test(trimmed)) return true;
   return false;
 }
 

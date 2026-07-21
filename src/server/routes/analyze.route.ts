@@ -10,15 +10,25 @@ import type { Request, Response, NextFunction } from 'express';
 import { parseRawText } from '../../lib/parser/orchestrator.js';
 import { buildReportSummary } from '../../lib/summarizer/summary-builder.js';
 import { extractWithLlm, createExtractionClient } from '../../lib/extraction/index.js';
-import type { IngestionResult } from '../../lib/types/index.js';
+import { normalizeSemantic } from '../../lib/semantic/index.js';
+import type { IngestionResult, StructuredReport, ReportSummary } from '../../lib/types/index.js';
+import type { QAReport } from '../../lib/semantic/types.js';
 import { config } from '../../shared/config.js';
 import { logger } from '../../shared/logger.js';
 
 export interface AnalyzePipelineResponse {
   success: boolean;
-  report: ReturnType<typeof parseRawText>;
-  summary: ReturnType<typeof buildReportSummary>;
+  report: StructuredReport;
+  summary: ReportSummary;
   warnings: string[];
+  /**
+   * Phase 9 semantic normalization audit trail.
+   * Always present after normalization runs successfully.
+   * Contains per-event traceability (source names, canonical names, reasons).
+   * Kept separate from `warnings` to preserve the lightweight string-only
+   * warnings contract and allow the frontend to render a rich audit view.
+   */
+  semanticQA?: QAReport;
 }
 
 export const analyzeRoute = {
@@ -69,27 +79,35 @@ export const analyzeRoute = {
         report = parseRawText(ingestion);
       }
 
-      // Phase 3: Summarize
-      const summary = buildReportSummary(report);
+      // Phase 9: Semantic normalization.
+      // Canonicalize analyte names, suppress noise sections, deduplicate findings.
+      // The QA report is kept separate — it is never merged into extractionQuality.warnings.
+      const { report: normalizedReport, qa: semanticQA } = normalizeSemantic(report);
+
+      // Phase 3: Summarize (uses the semantically cleaned report)
+      const summary = await buildReportSummary(normalizedReport);
 
       // Collect any quality warnings to surface to the frontend
       const warnings: string[] = [
         ...(ingestion.warningsOrErrors ?? []),
-        ...report.extractionQuality.warnings,
+        ...normalizedReport.extractionQuality.warnings,
       ];
 
-      if (report.extractionQuality.lowConfidence) {
+      if (normalizedReport.extractionQuality.lowConfidence) {
         warnings.push('Low confidence parse: the report may be a scanned image. Results may be incomplete.');
       }
-      if (report.extractionQuality.validationFailed) {
+      if (normalizedReport.extractionQuality.validationFailed) {
         warnings.push('Report structure failed validation. Some data may be missing or incorrect.');
       }
 
       logger.info('Analyze pipeline complete', {
-        entries: report.entries.length,
-        abnormal: summary.generationMeta.abnormalCount,
-        confidence: report.extractionQuality.confidence,
+        entries:          normalizedReport.entries.length,
+        abnormal:         summary.generationMeta.abnormalCount,
+        confidence:       normalizedReport.extractionQuality.confidence,
         usedLlmPath,
+        semanticEvents:   semanticQA.events.length,
+        suppressedByQA:   semanticQA.suppressedCount,
+        mergedByQA:       semanticQA.duplicatesMergedCount,
       });
 
       if (usedLlmPath) {
@@ -98,9 +116,10 @@ export const analyzeRoute = {
 
       const response: AnalyzePipelineResponse = {
         success: true,
-        report,
+        report: normalizedReport,
         summary,
         warnings,
+        semanticQA,
       };
 
       res.status(200).json(response);

@@ -16,8 +16,16 @@ build/
 outputs/*
 !outputs/.gitkeep
 !outputs/README.md
-data/*
-!data/processed/.gitkeep
+
+# Data directories — keep folder skeletons, ignore real PDFs & processed files
+data/uploads/
+data/samples/
+data/processed/
+!data/README.md
+
+# Personal / learning material (not for public repo)
+learning_material/
+prompts/
 
 # Logs
 logs/
@@ -37,16 +45,31 @@ Thumbs.db
 *.sw?
 .vscode/settings.json
 .idea/
+.kiro/
 
 # TypeScript cache
 *.tsbuildinfo
 
-# Test coverage
+# Test coverage & results
 coverage/
 .nyc_output/
+test-results/
 
-# Python venv (existing)
+# Python venv
 .venv/
 
-# Graphify (existing tooling)
+# Graphify knowledge-graph output (generated, not source)
 graphify-out/
+
+# ── Scratch / one-off dev scripts ─────────────────────────────────────────────
+# These are personal exploration scripts, NOT part of the runnable system.
+scratch/
+scratch.ts
+scratch2.ts
+scratch_check.ts
+gen-mapping.ts
+test-metadata.ts
+test-regex.js
+test.pdf
+test_pdfmake.ts
+payload.json

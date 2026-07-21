@@ -101,6 +101,11 @@ export function parseRawText(
   //    fresh empty `StructuredReport` with the error message in
   //    `extractionQuality.warnings`.
   try {
+    // Extract metadata from the full raw text BEFORE the layout engine
+    // strips page headers and boilerplate.
+    const rawCleanedText = cleanText(input.extractedText);
+    const metadata = extractMetadata(rawCleanedText);
+
     // Phase 8: when the extractor captured spatial layout data, use the layout
     // engine to produce a cleaner text representation before row detection.
     // The layout engine collapses multi-line rows, strips headers/footers and
@@ -109,7 +114,7 @@ export function parseRawText(
     //
     // If layoutPages is absent or the engine throws, we fall back to the plain
     // flat-text path (identical to pre-Phase-8 behaviour).
-    let sourceText = input.extractedText;
+    let cleanedText = rawCleanedText;
     const layoutWarnings: string[] = [];
     if (input.layoutPages && input.layoutPages.length > 0) {
       try {
@@ -119,7 +124,7 @@ export function parseRawText(
         );
         const layoutText = candidatesToText(layoutDoc.candidates);
         if (layoutText.trim().length > 0) {
-          sourceText = layoutText;
+          cleanedText = cleanText(layoutText);
           logger.info('parser:layout-engine-active', {
             blocks: layoutDoc.blocks.length,
             candidates: layoutDoc.candidates.length,
@@ -135,8 +140,6 @@ export function parseRawText(
       }
     }
 
-    const cleanedText = cleanText(sourceText);
-    const metadata = extractMetadata(cleanedText);
     const detectResult = detectRows(cleanedText);
     // Merge any layout warnings into the detect result's warnings.
     detectResult.warnings.push(...layoutWarnings);

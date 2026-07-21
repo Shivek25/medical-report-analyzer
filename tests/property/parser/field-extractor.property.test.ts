@@ -213,8 +213,23 @@ describe('Field_Extractor — property tests', () => {
               if (range.kind === 'numeric') {
                 if (entry.referenceRange.low !== range.low) return false;
                 if (entry.referenceRange.high !== range.high) return false;
+              } else if (range.kind === 'comparison') {
+                // The comparison range sets either low or high based on the operator.
+                // In the property test, `token` starts with `<` or `>` or `<=` or `>=` and then digits.
+                const compMatch = /^(<=|>=|<|>)\s*(\d+)$/.exec(range.token);
+                if (compMatch) {
+                   const op = compMatch[1];
+                   const bound = Number.parseFloat(compMatch[2]!);
+                   if (op === '<' || op === '<=') {
+                     if (entry.referenceRange.high !== bound) return false;
+                     if (entry.referenceRange.low !== undefined) return false;
+                   } else {
+                     if (entry.referenceRange.low !== bound) return false;
+                     if (entry.referenceRange.high !== undefined) return false;
+                   }
+                }
               } else {
-                // Comparison and qualitative ranges leave bounds undefined.
+                // Qualitative ranges leave bounds undefined.
                 if (entry.referenceRange.low !== undefined) return false;
                 if (entry.referenceRange.high !== undefined) return false;
               }

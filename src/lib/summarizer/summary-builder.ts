@@ -46,35 +46,58 @@ const ABNORMAL_SEVERITIES = new Set<string>([
  * This is the main Phase 3 entry point. The function is deterministic
  * aside from the `generatedAt` timestamp (pass `now` to pin it for tests).
  */
-export function buildReportSummary(
+export async function buildReportSummary(
   report: StructuredReport,
   now?: Date,
-): ReportSummary {
+): Promise<ReportSummary> {
   const abnormalFindings: SummaryFinding[] = [];
   const normalEntries: NormalEntry[] = [];
   const uncertainEntries: SummaryFinding[] = [];
   let skippedCount = 0;
 
-  for (const entry of report.entries) {
-    const classification = classifyEntry(entry);
+  const results = await Promise.all(
+    report.entries.map(async (entry) => {
+      const classification = classifyEntry(entry);
 
-    // Skipped entries (non-numeric, no flag) don't appear in the summary
-    if (classification === 'skipped') {
-      skippedCount++;
-      continue;
-    }
+      if (classification === 'skipped') {
+        return { type: 'skipped' as const };
+      }
 
-    // Uncertain entries go ONLY to the uncertain section
-    if (entry.uncertain) {
-      uncertainEntries.push(buildAbnormalFinding(entry, classification));
-      continue;
-    }
+      if (entry.uncertain) {
+        return {
+          type: 'uncertain' as const,
+          finding: await buildAbnormalFinding(entry, classification),
+        };
+      }
 
-    // Bucket by severity
-    if (ABNORMAL_SEVERITIES.has(classification)) {
-      abnormalFindings.push(buildAbnormalFinding(entry, classification));
-    } else {
-      normalEntries.push(buildNormalEntry(entry, classification));
+      if (ABNORMAL_SEVERITIES.has(classification)) {
+        return {
+          type: 'abnormal' as const,
+          finding: await buildAbnormalFinding(entry, classification),
+        };
+      }
+
+      return {
+        type: 'normal' as const,
+        finding: await buildNormalEntry(entry, classification),
+      };
+    })
+  );
+
+  for (const result of results) {
+    switch (result.type) {
+      case 'skipped':
+        skippedCount++;
+        break;
+      case 'uncertain':
+        uncertainEntries.push(result.finding as SummaryFinding);
+        break;
+      case 'abnormal':
+        abnormalFindings.push(result.finding as SummaryFinding);
+        break;
+      case 'normal':
+        normalEntries.push(result.finding as NormalEntry);
+        break;
     }
   }
 
@@ -107,29 +130,29 @@ export function buildReportSummary(
 function buildAbnormalFinding(
   entry: LabEntry,
   classification: Exclude<ClassificationResult, 'skipped'>,
-): SummaryFinding {
-  const interpretation = interpretFinding(entry, classification);
+): Promise<SummaryFinding> {
+  return interpretFinding(entry, classification).then((interpretation) => {
+    const finding: SummaryFinding = {
+      testName: entry.testName,
+      value: entry.value,
+      severity: classification === 'normal' ? 'high' : classification, // 'normal' uncertain entries get a default
+      category: entry.category,
+      interpretation,
+      uncertain: entry.uncertain,
+    };
 
-  const finding: SummaryFinding = {
-    testName: entry.testName,
-    value: entry.value,
-    severity: classification === 'normal' ? 'high' : classification, // 'normal' uncertain entries get a default
-    category: entry.category,
-    interpretation,
-    uncertain: entry.uncertain,
-  };
+    if (entry.unit !== undefined) {
+      finding.unit = entry.unit;
+    }
+    if (entry.referenceRange !== undefined) {
+      finding.referenceRange = entry.referenceRange;
+    }
+    if (entry.uncertaintyReason !== undefined) {
+      finding.uncertaintyReason = entry.uncertaintyReason;
+    }
 
-  if (entry.unit !== undefined) {
-    finding.unit = entry.unit;
-  }
-  if (entry.referenceRange !== undefined) {
-    finding.referenceRange = entry.referenceRange;
-  }
-  if (entry.uncertaintyReason !== undefined) {
-    finding.uncertaintyReason = entry.uncertaintyReason;
-  }
-
-  return finding;
+    return finding;
+  });
 }
 
 /**
@@ -138,22 +161,22 @@ function buildAbnormalFinding(
 function buildNormalEntry(
   entry: LabEntry,
   classification: Exclude<ClassificationResult, 'skipped'>,
-): NormalEntry {
-  const interpretation = interpretFinding(entry, classification);
+): Promise<NormalEntry> {
+  return interpretFinding(entry, classification).then((interpretation) => {
+    const normalEntry: NormalEntry = {
+      testName: entry.testName,
+      value: entry.value,
+      category: entry.category,
+      interpretation,
+    };
 
-  const normalEntry: NormalEntry = {
-    testName: entry.testName,
-    value: entry.value,
-    category: entry.category,
-    interpretation,
-  };
+    if (entry.unit !== undefined) {
+      normalEntry.unit = entry.unit;
+    }
+    if (entry.referenceRange !== undefined) {
+      normalEntry.referenceRange = entry.referenceRange;
+    }
 
-  if (entry.unit !== undefined) {
-    normalEntry.unit = entry.unit;
-  }
-  if (entry.referenceRange !== undefined) {
-    normalEntry.referenceRange = entry.referenceRange;
-  }
-
-  return normalEntry;
+    return normalEntry;
+  });
 }

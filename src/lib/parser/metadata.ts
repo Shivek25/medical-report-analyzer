@@ -53,8 +53,9 @@ const HEADER_ZONE_LINES = 30;
 /**
  * Recognises the labelled patient-name line. Allows an optional `Patient `
  * prefix (e.g., `Patient Name : Shivek Sharma`) and tolerates ` :` or `:`.
+ * Stops capturing if it hits another known column like `Specimen Drawn ON` or `Tests Done`.
  */
-const NAME_LABEL_LINE = /^\s*(?:Patient\s+)?Name\s*:\s*(.+?)\s*$/i;
+const NAME_LABEL_LINE = /^\s*(?:Patient\s+)?Name\s*:\s*(.+?)(?=\s+(?:Specimen|Age|Gender|Date|UHID|Barcode|Ref|Report|Tests|Client)\b|$)/i;
 
 /**
  * Stand-alone title-case name line used as a fallback when no labelled line
@@ -68,26 +69,38 @@ const NAME_LABEL_LINE = /^\s*(?:Patient\s+)?Name\s*:\s*(.+?)\s*$/i;
 const STANDALONE_NAME_LINE =
   /^([A-Z][a-z][a-zA-Z.'-]*(?:\s+[A-Z][a-z][a-zA-Z.'-]*)+(?:\s*\([^)]*\))?)$/;
 
+/** 
+ * Titled patient name line. E.g., ` Mr Saksham Upadhyay`
+ * `\uE000-\uF8FF` matches Private Use Area icons emitted by the PDF extractor.
+ */
+const TITLED_NAME_LINE = /^[\uE000-\uF8FF]\s*(Mr|Ms|Mrs|Master|Miss|Dr)\.?\s+(.+)$/i;
+
+/** Demographic line (e.g. Redcliffe Labs: `Gender: Male Age: 26 Yrs Patient ID: 17446833`) */
+const DEMOGRAPHIC_LINE = /Gender:\s*(Male|Female|M|F)\s*Age:\s*(\d+)\s*(?:Yrs|Y|Years).*?(?:Patient\s*ID|Report\s*ID|ID):\s*([A-Z0-9-]+)/i;
+
+/** Isolated Age/Gender line (e.g. `Age/Gender : 24 YRS  /M`) */
+const AGE_GENDER_LINE = /(?:Age\s*\/\s*Gender|Age|Gender)\s*:\s*(\d+)\s*(?:YRS|Y|Years|Year|Months|Days)?\s*\/?\s*(Male|Female|M|F)/i;
+
 /** Labelled report-date line (`Report Date` or `Reported on`). */
 const REPORT_DATE_LABEL =
-  /\b(?:Report\s*Date|Reported\s*on)\b\s*[:\-]?\s*(.+?)\s*$/i;
+  /(?:Report\s*Date|Reported\s*on|^\s*Date)\b\s*[:\-]?\s*(.+?(?=\s+Sample\s*Collected\b)|.+)/i;
 
 /** Labelled sample-collection-date line (`Sample Collected` or `Collection Date`). */
 const SAMPLE_DATE_LABEL =
-  /\b(?:Sample\s*Collected|Collection\s*Date)\b\s*[:\-]?\s*(.+?)\s*$/i;
+  /(?:Sample\s*Collected|Collection\s*Date|Specimen\s*Drawn\s*ON|Specimen\s*Received\s*ON|^\s*Sample)\b\s*[:\-]?\s*(.+?(?=\s+Report\s*Date\b)|.+)/i;
 
 /**
  * Known lab-name keywords. The first header-zone line containing any of
  * these keywords is treated as the lab name (Req 2.4).
  */
 const LAB_KEYWORD_LINE =
-  /\b(?:Thyrocare|Diagnostics?|Laboratories|Laboratory|Pathology|Pathlab|Healthcare|Lab)\b/i;
+  /\b(?:Thyrocare|Redcliffe|Diagnostics?|Laboratories|Laboratory|Pathology|Pathlab|Healthcare|Labs?)\b/i;
 
 /** Barcode label (e.g., `Barcode : BC-12345`). */
-const BARCODE_LABEL = /Barcode\s*:\s*([A-Z0-9-]+)/i;
+const BARCODE_LABEL = /(?:Barcode|Lab\s*No\.?)\s*:\s*([A-Z0-9-]+)/i;
 
 /** Report ID label (e.g., `Report ID : RPT-00123`). */
-const REPORT_ID_LABEL = /Report\s*ID\s*:\s*([A-Z0-9-]+)/i;
+const REPORT_ID_LABEL = /(?:Report\s*ID|Visit\s*ID|Visit\s*No\.?)\s*:\s*([A-Z0-9-]+)/i;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -101,7 +114,8 @@ const REPORT_ID_LABEL = /Report\s*ID\s*:\s*([A-Z0-9-]+)/i;
  *          could locate; absent fields are omitted (not set to `undefined`).
  */
 export function extract(cleanedText: string): ReportMetadata {
-  const lines = cleanedText.split('\n').slice(0, HEADER_ZONE_LINES);
+  const allLines = cleanedText.split('\n');
+  const lines = allLines.slice(0, HEADER_ZONE_LINES);
   const metadata: ReportMetadata = {};
 
   // ── Patient name + annotation ───────────────────────────────────────────────
@@ -112,19 +126,55 @@ export function extract(cleanedText: string): ReportMetadata {
     if (nameInfo.gender !== undefined) metadata.patientGender = nameInfo.gender;
   }
 
+  // ── Demographic line (Gender / Age / ID) ───────────────────────────────────
+  for (const line of lines) {
+    const m = DEMOGRAPHIC_LINE.exec(line);
+    if (m) {
+      if (!metadata.patientGender && m[1] !== undefined) {
+        const g = m[1].toUpperCase();
+        if (g.startsWith('M')) metadata.patientGender = 'M';
+        else if (g.startsWith('F')) metadata.patientGender = 'F';
+      }
+      if (!metadata.patientAge && m[2] !== undefined) {
+        metadata.patientAge = parseInt(m[2], 10);
+      }
+      if (!metadata.reportId && m[3] !== undefined) {
+        metadata.reportId = m[3];
+      }
+      break;
+    }
+  }
+
+  // ── Isolated Age/Gender Line ────────────────────────────────────────────────
+  for (const line of lines) {
+    const m = AGE_GENDER_LINE.exec(line);
+    if (m) {
+      if (!metadata.patientAge && m[1] !== undefined) {
+        metadata.patientAge = parseInt(m[1], 10);
+      }
+      if (!metadata.patientGender && m[2] !== undefined) {
+        const g = m[2].toUpperCase();
+        if (g.startsWith('M')) metadata.patientGender = 'M';
+        else if (g.startsWith('F')) metadata.patientGender = 'F';
+      }
+      break;
+    }
+  }
+
   // ── Report / sample dates ───────────────────────────────────────────────────
   // Only store a date when it parses to a clean ISO `YYYY-MM-DD`. A labelled
   // value that does not match an accepted calendar-date format (stray numeric
   // fragments, boilerplate, multi-value gluing) is left omitted rather than
   // stored verbatim —Req 2.6: the parser never fabricates metadata, and a
   // non-ISO reportDate would pollute downstream consumers.
-  const reportDateRaw = findLabelledValue(lines, REPORT_DATE_LABEL);
+  // Note: Dates often appear at the very bottom of pages (footers), so we search allLines.
+  const reportDateRaw = findLabelledValue(allLines, REPORT_DATE_LABEL);
   if (reportDateRaw !== undefined) {
     const iso = convertToIso(reportDateRaw);
     if (iso !== undefined) metadata.reportDate = iso;
   }
 
-  const sampleDateRaw = findLabelledValue(lines, SAMPLE_DATE_LABEL);
+  const sampleDateRaw = findLabelledValue(allLines, SAMPLE_DATE_LABEL);
   if (sampleDateRaw !== undefined) {
     const iso = convertToIso(sampleDateRaw);
     if (iso !== undefined) metadata.sampleDate = iso;
@@ -140,6 +190,13 @@ export function extract(cleanedText: string): ReportMetadata {
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
+    
+    // Hardcode fallback for Redcliffe Labs OCR artifacts
+    if (/redclif\s*f?e?labs/i.test(trimmed)) {
+      metadata.labName = 'Redcliffe Labs';
+      break;
+    }
+
     if (!LAB_KEYWORD_LINE.test(trimmed)) continue;
     if (isNoiseRow(trimmed)) continue;
     metadata.labName = trimmed;
@@ -200,6 +257,20 @@ function extractName(lines: string[]): NameInfo | undefined {
     const m = STANDALONE_NAME_LINE.exec(trimmed);
     if (m && m[1] !== undefined) {
       return parseNameAndAnnotation(m[1]);
+    }
+  }
+
+  // Strategy 3 (Titled name fallback): Title-case name preceded by an optional
+  // PUA emoji and a title (Mr/Ms/Mrs/Master/Miss/Dr). E.g., ` Mr Saksham Upadhyay`.
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    if (LAB_KEYWORD_LINE.test(trimmed)) continue;
+    if (isNoiseRow(trimmed)) continue;
+
+    const m = TITLED_NAME_LINE.exec(trimmed);
+    if (m && m[2] !== undefined) {
+      return parseNameAndAnnotation(m[2]);
     }
   }
 

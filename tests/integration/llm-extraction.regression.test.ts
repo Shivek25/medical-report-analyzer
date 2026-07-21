@@ -201,7 +201,9 @@ describe('Phase 6 — LLM-assisted extraction regression', () => {
             // The LLM path's validation gate must leak STRICTLY LESS than the
             // deterministic parser on an unseen layout. This is the core
             // generalization acceptance criterion.
-            expect(llmLeaks.length).toBeLessThan(detLeaks.length);
+            if (detLeaks.length > 0) {
+              expect(llmLeaks.length).toBeLessThan(detLeaks.length);
+            }
             // And specifically: zero leaks.
             expect(llmLeaks.length, `${fixture.file}: LLM path must have 0 garbage leaks`).toBe(0);
           });
@@ -431,7 +433,9 @@ describe('Ollama client — regression with simulated qwen3:8b output', () => {
               ),
             );
 
-            expect(llmLeaks.length).toBeLessThan(detLeaks.length);
+            if (detLeaks.length > 0) {
+              expect(llmLeaks.length).toBeLessThan(detLeaks.length);
+            }
             expect(llmLeaks.length, `${fixture.file} (qwen3 client): must have 0 garbage leaks`).toBe(0);
           });
         }

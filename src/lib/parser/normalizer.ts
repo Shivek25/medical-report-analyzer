@@ -16,10 +16,13 @@
  *   3. Canonicalise `unit` via `canonicalizeUnit` (trim + lookup against the
  *      shared unit map; unknown units pass through trimmed without case
  *      conversion).
- *   4. Parse numeric reference-range bounds when `referenceRange.text`
- *      matches `^\s*(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*$` (the
- *      shared `REFERENCE_RANGE_NUMERIC` pattern). When it does not match,
- *      leave `low` / `high` undefined and keep the trimmed text verbatim.
+ *   4. Parse numeric reference-range bounds:
+ *       a. Two-sided: `12–17` → `{ low:12, high:17 }` via REFERENCE_RANGE_NUMERIC.
+ *       b. One-sided: `< 30` → `{ high:30 }`, `> 40` → `{ low:40 }`,
+ *          `<= 5` → `{ high:5 }`, `>= 1.5` → `{ low:1.5 }` via
+ *          REFERENCE_RANGE_COMPARISON. This fixes the clinical-safety bug
+ *          where upper-limit-only references (e.g. LP(a) < 30) were silently
+ *          defaulting to 'normal' because no numeric bound was ever parsed.
  *   5. Idempotent: `normalize(normalize(e))` is deeply equal to
  *      `normalize(e)`.
  *
@@ -30,7 +33,7 @@
  */
 
 import type { LabEntry, LabReferenceRange } from '../types/index.js';
-import { REFERENCE_RANGE_NUMERIC } from './patterns.js';
+import { REFERENCE_RANGE_NUMERIC, REFERENCE_RANGE_COMPARISON } from './patterns.js';
 import { canonicalizeUnit } from './unit-map.js';
 
 /** Matches any run of 2+ whitespace characters; used to collapse `testName`. */
@@ -95,8 +98,11 @@ export function normalize(entry: LabEntry): LabEntry {
  *
  * Behaviour (Req 6.4, 6.5):
  *   - When `text` is present, trim it and use it as the source of truth:
- *       * If the trimmed text matches `REFERENCE_RANGE_NUMERIC`, set `low`
- *         and `high` to the parsed bounds and keep the trimmed text.
+ *       * If the trimmed text matches `REFERENCE_RANGE_NUMERIC` (two-sided),
+ *         set `low` and `high` to the parsed bounds and keep the trimmed text.
+ *       * If the trimmed text matches `REFERENCE_RANGE_COMPARISON` (one-sided),
+ *         set either `high` (for `<`/`<=`) or `low` (for `>`/`>=`) to the
+ *         parsed bound and keep the trimmed text.
  *       * Otherwise, leave `low` and `high` undefined (omitted) and keep
  *         the trimmed text verbatim.
  *   - When `text` is absent, preserve the input's `low` / `high` as-is
@@ -113,26 +119,51 @@ function normalizeRange(range: LabReferenceRange): LabReferenceRange {
     const trimmedText = range.text.trim();
     result.text = trimmedText;
 
-    const match = REFERENCE_RANGE_NUMERIC.exec(trimmedText);
-    if (match !== null) {
-      const lowStr = match[1];
-      const highStr = match[2];
-      // The regex's two capture groups are mandatory, so both will be
-      // present whenever `match` is non-null. The explicit check keeps
-      // strict-null-checks happy and documents the invariant.
+    // ── 1. Two-sided numeric range: "12 – 17" ───────────────────────────────
+    const twoSidedMatch = REFERENCE_RANGE_NUMERIC.exec(trimmedText);
+    if (twoSidedMatch !== null) {
+      const lowStr  = twoSidedMatch[1];
+      const highStr = twoSidedMatch[2];
       if (lowStr !== undefined && highStr !== undefined) {
-        result.low = Number.parseFloat(lowStr);
+        result.low  = Number.parseFloat(lowStr);
         result.high = Number.parseFloat(highStr);
       }
+      return result;
     }
-    // text present but non-numeric ⇒ do not assign low/high (Req 6.5).
+
+    // ── 2. One-sided comparison range: "< 30", "> 40", ">= 1.5", "<= 5" ────
+    //
+    // Clinical-safety fix (issues #5 and #8):
+    //   "LP(a) 31.6 mg/dL, ref < 30"  → high=30 → classifier flags HIGH ✓
+    //   "Urea  53.5,        ref < 52"  → high=52 → classifier flags HIGH ✓
+    //
+    // Operator semantics:
+    //   < X  or <= X  (or ≤)  → upper-limit only: set high = X
+    //   > X  or >= X  (or ≥)  → lower-limit only: set low  = X
+    const compMatch = REFERENCE_RANGE_COMPARISON.exec(trimmedText);
+    if (compMatch !== null) {
+      const op    = compMatch[1];
+      const bound = compMatch[2];
+      if (op !== undefined && bound !== undefined) {
+        const numericBound = Number.parseFloat(bound);
+        if (!Number.isNaN(numericBound)) {
+          if (op === '<' || op === '<=' || op === '\u2264') {
+            result.high = numericBound;   // anything above → HIGH
+          } else {
+            result.low = numericBound;    // anything below → LOW
+          }
+        }
+      }
+      return result;
+    }
+
+    // text present but matches no known numeric form → keep text only (Req 6.5).
   } else {
-    // No text on the input: preserve any pre-existing numeric bounds
-    // verbatim. This keeps the function idempotent for inputs constructed
-    // directly from a numeric range without text (e.g., test fixtures).
-    if (range.low !== undefined) result.low = range.low;
+    // No text: preserve pre-existing numeric bounds verbatim (idempotency).
+    if (range.low  !== undefined) result.low  = range.low;
     if (range.high !== undefined) result.high = range.high;
   }
 
   return result;
 }
+

@@ -17,6 +17,19 @@ const fonts = {
 pdfMake.setFonts(fonts);
 
 /**
+ * Sanitizes text to remove characters that standard PDF fonts (WinAnsiEncoding) struggle with.
+ */
+function sanitizePdfText(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/[\u2010-\u2015\u2212]/g, '-') // Replace various dashes and minus signs with standard hyphen
+    .replace(/[\u03BC\u00B5]/g, 'u')        // Replace Greek mu and micro sign with 'u' (for ug/dL)
+    .replace(/[\u2018\u2019]/g, "'")        // Replace smart single quotes
+    .replace(/[\u201C\u201D]/g, '"')        // Replace smart double quotes
+    .replace(/10\^6/g, '10⁶');              // Prettify scientific notation
+}
+
+/**
  * Generates a polished PDF report from a deterministic ReportSummary.
  * Returns a Promise that resolves with a Buffer containing the PDF data.
  */
@@ -108,14 +121,14 @@ function buildContent(summary: ReportSummary): Content[] {
   // Overview
   if (summary.overviewText) {
     content.push({ text: 'Overview', style: 'subheader' });
-    content.push({ text: summary.overviewText, style: 'overview' });
+    content.push({ text: sanitizePdfText(summary.overviewText), style: 'overview' });
   }
 
   // Abnormal Findings
   if (summary.abnormalFindings && summary.abnormalFindings.length > 0) {
     content.push({ text: 'Abnormal Findings', style: 'subheader' });
     summary.abnormalFindings.forEach(group => {
-      content.push({ text: group.category, bold: true, margin: [0, 5, 0, 5], color: '#E74C3C' });
+      content.push({ text: sanitizePdfText(group.category), bold: true, margin: [0, 5, 0, 5], color: '#E74C3C' });
       content.push(buildFindingsTable(group.findings, '#E74C3C', '#FDEDEC'));
     });
   }
@@ -136,7 +149,7 @@ function buildContent(summary: ReportSummary): Content[] {
   if (summary.normalFindings && summary.normalFindings.length > 0) {
     content.push({ text: 'Normal Findings', style: 'subheader' });
     summary.normalFindings.forEach(group => {
-      content.push({ text: group.category, bold: true, margin: [0, 5, 0, 5], color: '#27AE60' });
+      content.push({ text: sanitizePdfText(group.category), bold: true, margin: [0, 5, 0, 5], color: '#27AE60' });
       content.push(buildNormalTable(group.entries, '#27AE60', '#EAFAF1'));
     });
   }
@@ -173,17 +186,17 @@ function buildMetadataSection(summary: ReportSummary): Content {
       {
         width: '*',
         stack: [
-          { text: [{ text: 'Patient Name: ', style: 'metaLabel' }, { text: meta.patientName || 'Unknown', style: 'metaValue' }] },
-          { text: [{ text: 'Age: ', style: 'metaLabel' }, { text: meta.patientAge ? meta.patientAge.toString() : 'Unknown', style: 'metaValue' }] },
-          { text: [{ text: 'Gender: ', style: 'metaLabel' }, { text: meta.patientGender || 'Unknown', style: 'metaValue' }] },
+          { text: [{ text: 'Patient Name: ', style: 'metaLabel' }, { text: sanitizePdfText(meta.patientName) || 'Unknown', style: 'metaValue' }] },
+          { text: [{ text: 'Age: ', style: 'metaLabel' }, { text: sanitizePdfText(meta.patientAge ? meta.patientAge.toString() : 'Unknown'), style: 'metaValue' }] },
+          { text: [{ text: 'Gender: ', style: 'metaLabel' }, { text: sanitizePdfText(meta.patientGender) || 'Unknown', style: 'metaValue' }] },
         ],
       },
       {
         width: '*',
         stack: [
-          { text: [{ text: 'Report ID: ', style: 'metaLabel' }, { text: meta.reportId || 'N/A', style: 'metaValue' }] },
-          { text: [{ text: 'Report Date: ', style: 'metaLabel' }, { text: meta.reportDate || 'Unknown', style: 'metaValue' }] },
-          { text: [{ text: 'Lab Name: ', style: 'metaLabel' }, { text: meta.labName || 'Unknown', style: 'metaValue' }] },
+          { text: [{ text: 'Report ID: ', style: 'metaLabel' }, { text: sanitizePdfText(meta.reportId) || 'N/A', style: 'metaValue' }] },
+          { text: [{ text: 'Report Date: ', style: 'metaLabel' }, { text: sanitizePdfText(meta.reportDate) || 'Unknown', style: 'metaValue' }] },
+          { text: [{ text: 'Lab Name: ', style: 'metaLabel' }, { text: sanitizePdfText(meta.labName) || 'Unknown', style: 'metaValue' }] },
         ],
       },
     ],
@@ -220,17 +233,17 @@ function buildFindingsTable(findings: SummaryFinding[], headerColor: string, row
     const valStr = finding.unit ? `${finding.value} ${finding.unit}` : finding.value;
 
     tableBody.push([
-      { text: finding.testName, style: 'tableCell', fillColor: bgColor },
-      { text: valStr, style: 'tableCell', fillColor: bgColor, bold: true },
-      { text: refStr, style: 'tableCell', fillColor: bgColor },
-      { text: finding.interpretation || (finding.uncertaintyReason ? `Uncertain: ${finding.uncertaintyReason}` : ''), style: 'tableCell', fillColor: bgColor },
+      { text: sanitizePdfText(finding.testName), style: 'tableCell', fillColor: bgColor },
+      { text: sanitizePdfText(valStr), style: 'tableCell', fillColor: bgColor, bold: true },
+      { text: sanitizePdfText(refStr), style: 'tableCell', fillColor: bgColor },
+      { text: sanitizePdfText(finding.interpretation || (finding.uncertaintyReason ? `Uncertain: ${finding.uncertaintyReason}` : '')), style: 'tableCell', fillColor: bgColor },
     ]);
   });
 
   return {
     table: {
       headerRows: 1,
-      widths: ['25%', '15%', '20%', '40%'],
+      widths: ['30%', '15%', '15%', '40%'],
       body: tableBody,
     },
     layout: 'lightHorizontalLines',
@@ -266,9 +279,9 @@ function buildNormalTable(entries: NormalEntry[], headerColor: string, rowBgColo
     const valStr = entry.unit ? `${entry.value} ${entry.unit}` : entry.value;
 
     tableBody.push([
-      { text: entry.testName, style: 'tableCell', fillColor: bgColor },
-      { text: valStr, style: 'tableCell', fillColor: bgColor },
-      { text: refStr, style: 'tableCell', fillColor: bgColor },
+      { text: sanitizePdfText(entry.testName), style: 'tableCell', fillColor: bgColor },
+      { text: sanitizePdfText(valStr), style: 'tableCell', fillColor: bgColor },
+      { text: sanitizePdfText(refStr), style: 'tableCell', fillColor: bgColor },
     ]);
   });
 

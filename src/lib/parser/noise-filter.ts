@@ -138,6 +138,7 @@ const METADATA_KEYWORDS = [
 
 // ─── Disclaimers & Boilerplate Instructions ───────────────────────────────────
 const BOILERPLATE_KEYWORDS = [
+  /^y\s*our\b/i,
   /\bscan qr code\b/i,
   /\bauthenticity of reported results\b/i,
   /\bpertain to the specimen\b/i,
@@ -198,6 +199,106 @@ const BOILERPLATE_KEYWORDS = [
   /\bplease correlate with clinical\b/i,
   /\breport remarks\s*:\b/i,
   /\b30 days from release time\b/i,
+  
+  // Risk table classifications, interpretations, and guidelines
+  /\babove optimal\b/i,
+  /\bat risk\s*\(prediabetes\)/i,
+  /\bdiagnosing diabetes\b/i,
+  /\bextreme risk group\b/i,
+  /\b(?:low|moderate|high|very high)\s+risk\b/i,
+  /\bimpaired fasting glucose\b/i,
+  /\bkidney failure\b/i,
+  /\bpregnancy.*trimester\b/i,
+  /\bdiabetes\s*["'"]?e\b/i,
+  /\bcmia insufficient\b/i,
+  /\bhba\s*1c\s*\(ngsp\)\s*=/i,
+  /\bscoremonitarametersor\b/i,
+  /\bphealth\s+score\b/i,
+  /\btest parameters\b/i,
+  /\bborderline high\b/i,
+  /\bborder\s*line\s*high\b/i,
+  /\bdesirable\b/i,
+  /\boptimal\b/i,
+  /\bnear\s*optimal\b/i,
+  /\b(?:low|high|average)\s+(?:risk|limit)\b/i,
+
+  // ── Redcliffe Labs / multi-format panel summary lines ──────────────────────
+  // "3 Out of Range 0 Borderline 14 Within Range"
+  /\bout of range\b.*\bwithin range\b/i,
+  /\bborderline\b.*\bwithin range\b/i,
+  /\bwithin range\b/i,
+  // Marketing/status line: "LIVER FUNCTION 100 KIDNEY FUNCTION 100"
+  /\bliver function\s+\d+\s+kidney function\b/i,
+
+  // ── Glucose / HbA1c interpretation table rows ──────────────────────────────
+  // "Interpretation For HbA1c% As per American Diabetes Association (ADA)"
+  /^interpretation\b.*\bhba\s*1c\b/i,
+  /^interpretation\b.*\bdiabetes\b/i,
+  /\bas per american diabetes association\b/i,
+  /\bas per ada\b/i,
+  // "Normal 70" / "Diabetes >= 126" — classification label + number
+  /^(?:normal|diabetes|pre-?diabetes|hypoglycaemia|hyperglycaemia)\b\s+[>=<]?\s*\d/i,
+  // "Blood glucose and HbA1c for diabetes assessment"
+  /\bblood glucose\s+and\s+hba\s*1c\b/i,
+
+  // ── ASCVD / cardiovascular risk factor bullet lists ────────────────────────
+  /\bascvd\b/i,
+  /\batherosclerotic cardiovascular\b/i,
+  /\bcoronary artery calcium\b/i,
+
+  // ── Trimester reference rows: "2nd Trimester 0.2 - 3.0" ───────────────────
+  /\b(?:1st|2nd|3rd)\s+trimester\b/i,
+  /\btrimester\b/i,
+
+  // ── Enzymatic method notation: "Enzymatic [NADH (without P-5-P)]" ─────────
+  /\benzymatic\s*\[/i,
+  /\bnadh\b/i,
+  /\benzymatic\b/i,
+
+  // ── Clinical prose / interpretation sentences ──────────────────────────────
+  /\bhelp diagnose a variety\b/i,
+  /\bdiagnosing anaemias\b/i,
+  /\bdetects the presence\b/i,
+  /\babnormal blood smear\b/i,
+  /\bnormal blood smear\b/i,
+  /\bidentifying infections\b/i,
+  /\bimmature white blood cells\b/i,
+  /\black of intrinsic factor\b/i,
+  /\bmalabsorption\b/i,
+  /\bfluid retention and changes in metabolism\b/i,
+  /\bimpaired kidney function\b/i,
+  /\bdiabetic ketoacidosis\b/i,
+  /\bvery high glucose levels\b/i,
+  /\bfasting plasma glucose\b/i,
+
+  // ── Multi-threshold glued risk table rows ─────────────────────────────────
+  // "Very High - >=500 >=190 >=220"
+  /^very high\s*[-\u2013]/i,
+
+  // ── Numbered note/condition lines: "Note 1 .The diagnosis..." ─────────────
+  /^note\s+\d+\s*\.?\s+/i,
+
+  // ── Price / billing lines: "Rs. 1799" / currency symbol ──────────────────
+  /\brs\.\s*\d+\b/i,
+
+  // ── Age metadata: standalone "Age 19" label (not "Age/Gender") ────────────
+  /^age\s+\d{1,3}$/i,
+
+  // ── Sentence continuation fragments that still carry numbers ────────────────
+  // "mg/dL with symptoms of diabetes mellitus."
+  /\bwith symptoms of diabetes\b/i,
+  // "3. Low albumin: Caused by poor diet, kidney, or liver disease."
+  /\blow albumin\b.*\bliver disease\b/i,
+  // "of end organ damage 3. CHD stage 3B or 4. 4 LDL >190 mg/dl 5. Extreme..."
+  /\bend organ damage\b/i,
+  /\bchd\s+stage\b/i,
+  // Legal / liability boilerplate from Redcliffe Labs:
+  // "13. The laboratory shall not be liable for any delays..."
+  /\bthe laboratory shall not be liable\b/i,
+  /\bnot be liable\b/i,
+
+  // ── Price / billing lines: "₹ 1799" ────────────────────────────────────────
+  /₹\s*\d+/,
 ];
 
 // ─── Methodology / Technology Phrase Boilerplate ──────────────────────────────
@@ -241,7 +342,11 @@ const METHODOLOGY_TECHNOLOGY_BOILERPLATE = [
   /\batp\s+iii\b/i,
   // HSCRP / risk-classification table rows of the shape
   //   "<num> - <num>    -  <Risk Label>" or "> <num>  -  <Risk Label>".
-  /^\s*(?:[<>]?\s*\d+(?:\.\d+)?\s*[-\u2013]\s*)?\d+(?:\.\d+)?\s*-\s*(?:Low|Average|High|Possibly due to)\b/i,
+  /^\s*(?:[<>]?\s*\d+(?:\.\d+)?\s*[-\u2013]?\s*)?(?:\d+(?:\.\d+)?)?\s*-\s*(?:Low|Average|High|Possibly due to)\b/i,
+  // Catch "< 130   Desirable" or "130-159   Border Line High"
+  /^\s*(?:[<>]?=?\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?)\s+(?:Desirable|Border\s*Line|High|Optimal|Low|Average|Moderate)\b/i,
+  // Catch "Low High <40 >=60"
+  /^(?:Low|High|Average|Desirable|Optimal)\s+(?:Low|High|Average|Desirable|Optimal)/i,
   // Doctor / reporting-authority signature line (e.g. "Dr.Sneha Singh").
   /^Dr\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*$/i,
   // "Report Remarks :" / "Tests Done :" headers (already partially matched by
@@ -522,6 +627,9 @@ export function extractMeaningfulTestName(rawName: string): string {
       }
     }
   }
+
+  // Strip trailing `<` or `>` that leaked from the value token.
+  name = name.replace(/\s*[<>]\s*$/, '').trim();
 
   return name;
 }
